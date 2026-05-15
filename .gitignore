@@ -47,3 +47,11 @@ po/*~
 
 # RStudio Connect folder
 rsconnect/
+
+# applications/slack — ignore everything under this directory at any depth.
+# Patterns apply to any matching path Git may see later; files need not exist
+# when this rule is written. Only README.md stays eligible for commits.
+# Note: paths already tracked by Git remain tracked until removed from the index.
+applications/slack/*
+applications/slack/**
+!applications/slack/README.md
