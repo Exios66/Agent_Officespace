@@ -2,4 +2,4 @@
 
 ## 🕵️🕵️🕵️
 
-- An agent access terminal for Existential Ventures LLC projects.
+- An agent access terminal for *Existential Ventures LLC* projects.
