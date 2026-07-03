@@ -97,13 +97,20 @@ class PokerDataPreprocessor:
         
         actions = []
         parts = action_str.split('/')
-        
+
+        # Track whether any bet/raise has already appeared in the sequence.
+        # Previously we (incorrectly) used `actions[-1]['action'] == 'fold'` to
+        # detect the "no bet yet" case, which caused any sized action following
+        # a fold to be classified as a `bet` instead of a `raise`, e.g.
+        #   UTG/2.0bb/HJ/fold/CO/6.0bb  ->  CO action mis-labeled as `bet`.
+        bet_or_raise_seen = False
+
         i = 0
         while i < len(parts):
             if i + 1 < len(parts):
                 position = parts[i]
                 action = parts[i + 1]
-                
+
                 # Check if it's a bet/raise with amount
                 amount = None
                 if 'bb' in action:
@@ -112,20 +119,21 @@ class PokerDataPreprocessor:
                         amount = float(amount_str)
                     except ValueError:
                         amount = None
-                    action_type = 'bet' if i == 0 or actions[-1]['action'] == 'fold' else 'raise'
+                    action_type = 'raise' if bet_or_raise_seen else 'bet'
+                    bet_or_raise_seen = True
                 else:
                     action_type = action
-                
+
                 actions.append({
                     'position': position,
                     'action': action_type,
                     'amount': amount
                 })
-                
+
                 i += 2
             else:
                 i += 1
-        
+
         return actions
     
     def extract_preflop_features(self, df: pd.DataFrame) -> pd.DataFrame:

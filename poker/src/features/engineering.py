@@ -84,12 +84,12 @@ class HandStrengthEvaluator:
             card1_rank, card2_rank, card1_suit, card2_suit
         )
         
-        # Find hand group
-        hand_group = 9  # Default: weak hand
-        for group_num in range(1, 9):
-            if (hand, is_suited) in [(h[0], h[1]) for h in self.HAND_GROUPS.get(group_num, [])]:
-                hand_group = group_num
-                break
+        # Find hand group via O(1) precomputed lookup instead of the previous
+        # nested-loop / list-comprehension scan across every group per row.
+        # Pairs are always unsuited; force `is_suited=False` when looking them
+        # up so a pair like 'AA' matches the entry `('AA', False)`.
+        lookup_key = (hand, False if is_pair else is_suited)
+        hand_group = self.hand_to_group.get(lookup_key, 9)
         
         # Calculate additional features
         rank1_val = self.RANK_VALUES.get(card1_rank, 0)

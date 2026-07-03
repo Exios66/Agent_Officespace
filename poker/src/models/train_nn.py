@@ -250,8 +250,7 @@ class PokerNNTrainer:
         """
         print(f"\nTraining {self.model_type} model...")
         
-        # Encode labels
-        y_train_encoded = y_train.copy()
+        # Fit label encoder on training labels
         self.label_encoder.fit(y_train)
         
         # Create datasets
@@ -276,9 +275,15 @@ class PokerNNTrainer:
         # Loss and optimizer
         criterion = nn.CrossEntropyLoss()
         optimizer = optim.Adam(self.model.parameters(), lr=lr)
-        scheduler = optim.lr_scheduler.ReduceLROnPlateau(
-            optimizer, mode='max', factor=0.5, patience=5, verbose=True
-        )
+        try:
+            scheduler = optim.lr_scheduler.ReduceLROnPlateau(
+                optimizer, mode='max', factor=0.5, patience=5, verbose=True
+            )
+        except TypeError:
+            # The `verbose` kwarg was deprecated and removed in newer PyTorch versions.
+            scheduler = optim.lr_scheduler.ReduceLROnPlateau(
+                optimizer, mode='max', factor=0.5, patience=5
+            )
         
         # Training history
         history = {
@@ -334,7 +339,14 @@ class PokerNNTrainer:
                 # Save best model
                 if val_acc > best_val_acc:
                     best_val_acc = val_acc
-                    self.best_model_state = self.model.state_dict().copy()
+                    # `state_dict().copy()` only shallow-copies the dict — the tensor
+                    # values are references that would keep changing as training
+                    # continues, silently corrupting the "best" checkpoint. Detach
+                    # and clone each tensor so we retain a true snapshot.
+                    self.best_model_state = {
+                        k: v.detach().cpu().clone()
+                        for k, v in self.model.state_dict().items()
+                    }
             else:
                 print(f"Epoch {epoch+1}: "
                       f"Train Loss: {train_loss:.4f}, Train Acc: {train_acc:.4f}")
