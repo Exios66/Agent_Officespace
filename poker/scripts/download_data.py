@@ -1,67 +1,100 @@
 """
-Data downloading script for PokerBench dataset from HuggingFace.
+Data downloading script for the PokerBench dataset on Hugging Face Hub.
 
-This script downloads the PokerBench dataset which contains:
-- Preflop scenarios (60k train, 1k test)
-- Postflop scenarios (500k train, 10k test)
+The Hub repo (``RZ412/PokerBench``) ships two coordinated file formats for each
+split:
 
-Both JSON (prompts + labels) and CSV (structured data) formats.
+* ``preflop_*_game_scenario_information.csv`` — structured columns
+  (``hero_pos``, ``hero_holding``, ``prev_line``, ``num_players``,
+  ``num_bets``, ``available_moves``, ``pot_size``, ``correct_decision``).
+  Consumed by the classical ML pipeline (`preprocess.py` -> `engineering.py`
+  -> `train_ml.py`).
+* ``preflop_*_prompt_and_label.json`` — LLM prompt/response pairs consumed by
+  the LLM fine-tune track.
+
+We download both. The structured CSVs are additionally aliased to
+``train.csv`` / ``test.csv`` (the filenames the preprocessor / notebooks
+expect) so downstream code has a stable entry point.
+
+Previously this script used ``datasets.load_dataset('RZ412/PokerBench')``,
+which surfaces only the LLM prompt/label view and therefore left the
+downstream classical pipeline unable to find its expected columns. Using
+``hf_hub_download`` avoids that mismatch.
 """
 
-import os
 import argparse
+import os
+import shutil
 from pathlib import Path
-from datasets import load_dataset
+
 import pandas as pd
-from tqdm import tqdm
+from huggingface_hub import hf_hub_download
 
 
-def download_pokerbench(output_dir: str = "data/raw/pokerbench"):
-    """
-    Download PokerBench dataset from HuggingFace.
-    
-    Args:
-        output_dir: Directory to save downloaded data
-    """
+POKERBENCH_REPO = "RZ412/PokerBench"
+
+# Structured CSVs — required by the classical / notebook pipeline.
+PREFLOP_CSV_FILES = {
+    "train": "preflop_60k_train_set_game_scenario_information.csv",
+    "test": "preflop_1k_test_set_game_scenario_information.csv",
+}
+
+# LLM prompt / label JSONs — required by the LLM fine-tune track.
+PREFLOP_JSON_FILES = {
+    "train": "preflop_60k_train_set_prompt_and_label.json",
+    "test": "preflop_1k_test_set_prompt_and_label.json",
+}
+
+
+def _copy_to(src: str, dst: Path) -> None:
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(src, dst)
+
+
+def download_pokerbench(output_dir: str = "data/raw/pokerbench") -> bool:
+    """Download PokerBench preflop CSV + JSON files and expose the CSVs as
+    ``train.csv`` / ``test.csv`` for the downstream preprocessor."""
     output_path = Path(output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
-    
-    print("Downloading PokerBench dataset from HuggingFace...")
-    
+
+    print("Downloading PokerBench preflop CSV + JSON files from Hugging Face Hub...")
+
     try:
-        # Load the full dataset
-        dataset = load_dataset("RZ412/PokerBench")
-        
-        print(f"Dataset loaded successfully!")
-        print(f"Dataset structure: {dataset}")
-        
-        # Save each split
-        for split_name, split_data in dataset.items():
-            print(f"\nProcessing split: {split_name}")
-            
-            # Convert to pandas DataFrame
-            df = split_data.to_pandas()
-            
-            # Save as CSV
-            csv_path = output_path / f"{split_name}.csv"
-            df.to_csv(csv_path, index=False)
-            print(f"Saved CSV: {csv_path} ({len(df)} rows)")
-            
-            # Save as JSON (preserving structure)
-            json_path = output_path / f"{split_name}.json"
-            df.to_json(json_path, orient='records', lines=True)
-            print(f"Saved JSON: {json_path}")
-            
-            # Print sample
-            if len(df) > 0:
-                print(f"\nSample from {split_name}:")
-                print(df.head(2))
-                print(f"\nColumns: {list(df.columns)}")
-        
-        print(f"\n✓ Dataset downloaded successfully to {output_path}")
+        for split, filename in PREFLOP_CSV_FILES.items():
+            local_path = hf_hub_download(
+                repo_id=POKERBENCH_REPO,
+                filename=filename,
+                repo_type="dataset",
+            )
+
+            csv_dst = output_path / filename
+            _copy_to(local_path, csv_dst)
+
+            # Alias to the simple `train.csv` / `test.csv` name expected by
+            # `src/data/preprocess.py` and the notebooks. Some historical CSV
+            # dumps carry an unnamed pandas index column, so we strip it here.
+            df = pd.read_csv(csv_dst)
+            df = df.loc[:, ~df.columns.str.match(r"^Unnamed")]
+            alias_dst = output_path / f"{split}.csv"
+            df.to_csv(alias_dst, index=False)
+
+            print(f"  {split}: {csv_dst.name} -> {alias_dst.name} ({len(df)} rows)")
+            print(f"    columns: {list(df.columns)}")
+
+        for split, filename in PREFLOP_JSON_FILES.items():
+            local_path = hf_hub_download(
+                repo_id=POKERBENCH_REPO,
+                filename=filename,
+                repo_type="dataset",
+            )
+            json_dst = output_path / filename
+            _copy_to(local_path, json_dst)
+            print(f"  {split} (LLM JSON): {json_dst.name}")
+
+        print(f"\n\u2713 PokerBench downloaded to {output_path}")
         return True
-        
-    except Exception as e:
+
+    except Exception as e:  # pragma: no cover - network / auth issues surface here
         print(f"Error downloading dataset: {e}")
         return False
 
