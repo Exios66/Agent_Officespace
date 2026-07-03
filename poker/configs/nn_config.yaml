@@ -1,0 +1,47 @@
+# Model configuration for Neural Network
+model_type: mlp  # or lstm
+
+# Data paths
+data:
+  raw_dir: data/raw/pokerbench
+  processed_dir: data/processed
+  output_dir: data/models
+
+# Model architecture
+model:
+  type: mlp  # or lstm
+  hidden_dims: [512, 256, 128]  # for MLP
+  hidden_dim: 256  # for LSTM
+  num_layers: 2  # for LSTM
+  dropout: 0.3
+
+# Training settings
+training:
+  batch_size: 256
+  epochs: 50
+  learning_rate: 0.001
+  val_split: 0.2
+  early_stopping: true
+  patience: 10
+
+# Optimizer
+optimizer:
+  type: adam
+  weight_decay: 0.0001
+
+# Scheduler
+scheduler:
+  type: reduce_on_plateau
+  mode: max
+  factor: 0.5
+  patience: 5
+
+# Device
+device: cuda  # or cpu (auto-detected if not specified)
+
+# Feature engineering
+features:
+  use_hand_strength: true
+  use_position_features: true
+  use_pot_odds: true
+  use_action_sequence: true
