@@ -1,0 +1,64 @@
+[project]
+name = "poker-predictor"
+version = "0.1.0"
+description = "Preflop poker prediction algorithm (fold probability, bluff success, EV) with parallel LLM fine-tune track."
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [{ name = "Existential Ventures LLC" }]
+license = { text = "MIT" }
+
+dependencies = [
+    "numpy>=1.26",
+    "pandas>=2.2",
+    "scikit-learn>=1.5",
+    "lightgbm>=4.5",
+    "xgboost>=2.1",
+    "pydantic>=2.7",
+    "typer>=0.12",
+    "rich>=13.7",
+    "datasets>=3.0",
+    "huggingface_hub>=0.25",
+    "joblib>=1.4",
+    "pyarrow>=17.0",
+]
+
+[project.optional-dependencies]
+torch = [
+    "torch>=2.3",
+]
+llm = [
+    "transformers>=4.44",
+    "trl>=0.11",
+    "peft>=0.12",
+    "accelerate>=0.34",
+]
+tracking = [
+    "trackio>=0.0.6",
+]
+dev = [
+    "pytest>=8.3",
+    "ruff>=0.6",
+    "mypy>=1.11",
+]
+
+[project.scripts]
+poker-predictor = "poker_predictor.cli:app"
+
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["poker_predictor*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "SIM"]
+ignore = ["E501"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra -q"
