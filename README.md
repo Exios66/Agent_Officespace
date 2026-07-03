@@ -120,6 +120,35 @@ hf jobs uv run --flavor a10-large --secrets HF_TOKEN \
 - `villain_fold_brier` — calibration of the bluff-success head.
 - `bluff_ev_mean` / `bluff_positive_frac` — the aggregate bluff-EV backtest.
 
+### Notebooks
+
+Three top-level notebooks under [`notebooks/`](notebooks/) run end-to-end
+against the live PokerBench download and are re-executed as part of this
+branch:
+
+| notebook | what it does |
+|---|---|
+| [`01_eda_preflop.ipynb`](notebooks/01_eda_preflop.ipynb) | Preflop EDA: canonical action distribution, position mix, pot / stack profile, hand-class action mix. |
+| [`02_baseline_metrics.ipynb`](notebooks/02_baseline_metrics.ipynb) | Trains the LightGBM multi-head baseline via `poker_predictor.training.train_classical.train` and reports `top1_accuracy`, `action_log_loss`, `villain_fold_brier`, `bluff_ev_mean`, `bluff_positive_frac` on the 1k test split. |
+| [`03_prediction_success_evaluation.ipynb`](notebooks/03_prediction_success_evaluation.ipynb) | **Prediction-of-success evaluation**: trains 5 algorithm families on identical features (logistic, random forest, hist-gradient-boosting, LightGBM, XGBoost) and reports accuracy / macro-F1 / log-loss / top-2 accuracy / per-class metrics / fit-time / inference throughput, plus per-model confusion matrices, a shared calibration curve on `p(raise)`, and a bluff-EV backtest against the dedicated villain-fold head. Results are persisted to `artifacts/prediction_success_eval/multi_algo_results.json`. |
+
+Latest execution of `03_prediction_success_evaluation.ipynb` (20 000 training
+rows, 1 000 test rows, 4 canonical actions):
+
+| model | accuracy | macro-F1 | log-loss | top-2 acc | fit (s) |
+|---|---:|---:|---:|---:|---:|
+| xgboost       | 0.964 | 0.964 | 0.111 | 0.999 | 2.0 |
+| hist_gbm      | 0.954 | 0.954 | 0.211 | 0.980 | 2.6 |
+| lightgbm      | 0.951 | 0.951 | 0.140 | 0.992 | 3.2 |
+| random_forest | 0.943 | 0.943 | 0.187 | 0.998 | 1.3 |
+| logistic      | 0.821 | 0.820 | 0.364 | 0.996 | 1.9 |
+
+Run any notebook with:
+
+```bash
+jupyter nbconvert --to notebook --execute notebooks/03_prediction_success_evaluation.ipynb --output 03_prediction_success_evaluation.ipynb
+```
+
 ### Refinement roadmap
 
 Concrete extensions once we ingest richer data:
