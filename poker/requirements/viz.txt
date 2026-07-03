@@ -1,0 +1,14 @@
+# Legacy MVP: visualization dependencies.
+#
+# Install with:
+#     pip install -r poker/requirements/viz.txt
+#
+# Adds the plotting libraries used by the notebooks and by
+# `src/evaluation/evaluate.py` for confusion-matrix / feature-importance
+# / calibration-curve plots. If you only need the numeric metrics,
+# you can skip this file.
+-r base.txt
+
+matplotlib>=3.7.0
+seaborn>=0.12.0
+plotly>=5.14.0

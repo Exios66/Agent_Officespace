@@ -1,0 +1,13 @@
+# Legacy MVP: neural-network training path.
+#
+# Install with:
+#     pip install -r poker/requirements/nn.txt
+#
+# Adds PyTorch so `src/models/train_nn.py` (and
+# scripts/run_pipeline.py --model-type {mlp,lstm}) can train the
+# MLP / LSTM heads.
+-r base.txt
+
+# Upper bound: modern PyTorch has already broken this codebase once
+# (ReduceLROnPlateau(verbose=True) — see docs/BUG_AUDIT.md item 2).
+torch>=2.0.0,<3.0.0

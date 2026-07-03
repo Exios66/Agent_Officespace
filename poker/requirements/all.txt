@@ -1,0 +1,16 @@
+# Legacy MVP: everything.
+#
+# Install with:
+#     pip install -r poker/requirements/all.txt
+#
+# Superset of every layer in this directory — matches what the old
+# monolithic `poker/requirements.txt` used to install. Use this only if
+# you plan to exercise every training path, every notebook, and the
+# full dev toolchain.
+-r ml.txt
+-r nn.txt
+-r llm.txt
+-r viz.txt
+-r tracking.txt
+-r poker.txt
+-r dev.txt
