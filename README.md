@@ -131,6 +131,7 @@ branch:
 | [`01_eda_preflop.ipynb`](notebooks/01_eda_preflop.ipynb) | Preflop EDA: canonical action distribution, position mix, pot / stack profile, hand-class action mix. |
 | [`02_baseline_metrics.ipynb`](notebooks/02_baseline_metrics.ipynb) | Trains the LightGBM multi-head baseline via `poker_predictor.training.train_classical.train` and reports `top1_accuracy`, `action_log_loss`, `villain_fold_brier`, `bluff_ev_mean`, `bluff_positive_frac` on the 1k test split. |
 | [`03_prediction_success_evaluation.ipynb`](notebooks/03_prediction_success_evaluation.ipynb) | **Prediction-of-success evaluation**: trains 5 algorithm families on identical features (logistic, random forest, hist-gradient-boosting, LightGBM, XGBoost) and reports accuracy / macro-F1 / log-loss / top-2 accuracy / per-class metrics / fit-time / inference throughput, plus per-model confusion matrices, a shared calibration curve on `p(raise)`, and a bluff-EV backtest against the dedicated villain-fold head. Results are persisted to `artifacts/prediction_success_eval/multi_algo_results.json`. |
+| [`04_rf_action_and_success_predictors.ipynb`](notebooks/04_rf_action_and_success_predictors.ipynb) | **Random Forest action classifiers + Random Forest *success* predictors**. Part A trains 4 RF variants (baseline / deep / class-balanced / isotonic-calibrated) on the same features and ranks them. Part B trains, for each of 4 primary action models (LightGBM / XGBoost / RF-tuned / logistic), an `RandomForestClassifier`-backed `SuccessPredictor` (`poker_predictor.models.success_predictor`) that estimates *"will the primary be correct on this specific spot?"*. Reports ROC-AUC / PR-AUC / Brier of the meta-model vs a naive `max(proba)` confidence baseline, plots per-primary coverage-vs-retained-accuracy curves, and outputs a **trust-policy table** ("at what confidence threshold can I automate 99% / 98% / 97% / 95% of the spots?"). Results are persisted to `artifacts/rf_success_predictor/rf_success_results.json`. |
 
 Latest execution of `03_prediction_success_evaluation.ipynb` (20 000 training
 rows, 1 000 test rows, 4 canonical actions):
@@ -143,10 +144,41 @@ rows, 1 000 test rows, 4 canonical actions):
 | random_forest | 0.943 | 0.943 | 0.187 | 0.998 | 1.3 |
 | logistic      | 0.821 | 0.820 | 0.364 | 0.996 | 1.9 |
 
+Latest execution of `04_rf_action_and_success_predictors.ipynb` (12k
+primary-train rows, 8k meta-train rows, 1k test rows):
+
+**Random Forest action classifiers (Part A)**
+
+| variant | accuracy | log-loss |
+|---|---:|---:|
+| rf_deep            | 0.949 | 0.177 |
+| rf_baseline        | 0.940 | 0.234 |
+| rf_balanced        | 0.936 | 0.167 |
+| rf_calibrated_iso  | 0.922 | 0.635 |
+
+**Random Forest success predictors (Part B) — ROC-AUC on "is primary right?"**
+
+| primary | naive `max(proba)` | **RF meta-model** | Δ |
+|---|---:|---:|---:|
+| lightgbm | 0.897 | **0.919** | +0.022 |
+| xgboost  | 0.857 | **0.898** | +0.041 |
+| rf_tuned | 0.861 | **0.924** | +0.063 |
+| logistic | 0.829 | **0.903** | +0.074 |
+
+**Trust policy — max coverage while retaining ≥ 99% accuracy on kept spots**
+
+| primary | full-cov acc | 99% target coverage |
+|---|---:|---:|
+| lightgbm | 0.947 | 0.894 |
+| xgboost  | 0.961 | 0.852 |
+| rf_tuned | 0.949 | 0.821 |
+| logistic | 0.814 | 0.541 |
+
 Run any notebook with:
 
 ```bash
 jupyter nbconvert --to notebook --execute notebooks/03_prediction_success_evaluation.ipynb --output 03_prediction_success_evaluation.ipynb
+jupyter nbconvert --to notebook --execute notebooks/04_rf_action_and_success_predictors.ipynb --output 04_rf_action_and_success_predictors.ipynb
 ```
 
 ### Refinement roadmap
