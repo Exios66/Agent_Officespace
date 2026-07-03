@@ -157,10 +157,12 @@ class PokerMLTrainer:
             model = RandomForestClassifier(**self.config)
         
         elif self.model_type == 'logistic':
+            # NOTE: `n_jobs` is only honored by parallel solvers (e.g. 'saga').
+            # Using it with the default 'lbfgs' solver produced a UserWarning
+            # and no parallelism, so we drop it here.
             self.config = {
                 'max_iter': 1000,
                 'random_state': self.random_state,
-                'n_jobs': -1
             }
             model = LogisticRegression(**self.config)
         
@@ -256,7 +258,6 @@ class PokerMLTrainer:
         
         # Predict
         y_pred = self.model.predict(X_test)
-        y_pred_proba = self.model.predict_proba(X_test)
         
         # Calculate metrics
         accuracy = accuracy_score(y_test_encoded, y_pred)

@@ -169,16 +169,29 @@ class PokerLLMTrainer:
         
         # Load model with appropriate settings
         if self.use_lora:
-            # Load in 8-bit for LoRA
+            # 8-bit loading requires `bitsandbytes`. Fall back to full precision
+            # if it isn't installed so LoRA fine-tuning still works.
+            use_8bit = False
+            if self.device == "cuda":
+                try:
+                    import bitsandbytes  # noqa: F401
+                    use_8bit = True
+                except ImportError:
+                    print(
+                        "Warning: `bitsandbytes` is not installed; loading model "
+                        "without 8-bit quantization. Install `bitsandbytes` for "
+                        "lower memory usage."
+                    )
+
             model = AutoModelForCausalLM.from_pretrained(
                 self.model_name,
-                load_in_8bit=True if self.device == "cuda" else False,
+                load_in_8bit=use_8bit,
                 device_map="auto" if self.device == "cuda" else None,
                 trust_remote_code=True
             )
-            
-            # Prepare for k-bit training
-            if self.device == "cuda":
+
+            # Prepare for k-bit training only when we actually loaded in 8-bit.
+            if use_8bit:
                 model = prepare_model_for_kbit_training(model)
             
             # Add LoRA adapters
@@ -273,8 +286,18 @@ class PokerLLMTrainer:
             mlm=False
         )
         
-        # Training arguments
-        training_args = TrainingArguments(
+        # Training arguments. Newer versions of `transformers` renamed
+        # `evaluation_strategy` -> `eval_strategy`, so pick the correct kwarg
+        # at runtime. Also make sure save/eval strategies match when using
+        # `load_best_model_at_end`, otherwise Trainer raises a ValueError.
+        import inspect
+        ta_params = inspect.signature(TrainingArguments.__init__).parameters
+        eval_strategy_key = (
+            "eval_strategy" if "eval_strategy" in ta_params else "evaluation_strategy"
+        )
+        strategy_value = "steps" if eval_tokenized else "no"
+
+        ta_kwargs = dict(
             output_dir=output_dir,
             num_train_epochs=num_epochs,
             per_device_train_batch_size=batch_size,
@@ -285,13 +308,19 @@ class PokerLLMTrainer:
             logging_steps=10,
             save_steps=500,
             eval_steps=500 if eval_tokenized else None,
-            evaluation_strategy="steps" if eval_tokenized else "no",
             save_total_limit=3,
-            load_best_model_at_end=True if eval_tokenized else False,
-            fp16=True if self.device == "cuda" else False,
+            # `load_best_model_at_end` requires save_strategy == eval_strategy AND
+            # save_steps to be a multiple of eval_steps — enforced above.
+            load_best_model_at_end=bool(eval_tokenized),
+            fp16=self.device == "cuda",
             report_to="tensorboard",
             remove_unused_columns=True,
         )
+        ta_kwargs[eval_strategy_key] = strategy_value
+        if "save_strategy" in ta_params:
+            ta_kwargs["save_strategy"] = strategy_value
+
+        training_args = TrainingArguments(**ta_kwargs)
         
         # Trainer
         trainer = Trainer(

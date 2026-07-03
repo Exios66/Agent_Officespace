@@ -392,7 +392,7 @@ def main():
         print("\nMaking predictions...")
         predictions = []
         
-        for idx, row in df_test.iterrows():
+        for i, (idx, row) in enumerate(df_test.iterrows()):
             if args.model_type in ['ml', 'nn']:
                 # Use numeric features
                 features = row[inference.feature_names].to_dict()
@@ -410,8 +410,8 @@ def main():
             
             predictions.append(pred)
             
-            if (idx + 1) % 100 == 0:
-                print(f"  Processed {idx + 1}/{len(df_test)} samples")
+            if (i + 1) % 100 == 0:
+                print(f"  Processed {i + 1}/{len(df_test)} samples")
         
         # Evaluate
         evaluator = ModelEvaluator()
