@@ -1,0 +1,21 @@
+# Canonical stack: base runtime dependencies.
+#
+# Mirror of the `[project.dependencies]` section of ../pyproject.toml.
+# Install with:
+#     pip install -r requirements/base.txt
+#
+# This gives you the classical LightGBM/XGBoost baseline, the pydantic
+# schemas, and the CLI, but no PyTorch, no LLM/Transformers, and no
+# experiment tracking. Layer additional files on top for those.
+numpy>=1.26
+pandas>=2.2
+scikit-learn>=1.5
+lightgbm>=4.5
+xgboost>=2.1
+pydantic>=2.7
+typer>=0.12
+rich>=13.7
+datasets>=3.0
+huggingface_hub>=0.25
+joblib>=1.4
+pyarrow>=17.0

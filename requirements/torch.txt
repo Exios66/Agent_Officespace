@@ -1,0 +1,12 @@
+# Canonical stack: base + PyTorch MLP baseline.
+#
+# Mirror of the `torch` extra in ../pyproject.toml. Install with:
+#     pip install -r requirements/torch.txt
+#
+# Adds PyTorch so `poker_predictor.training.train_torch` and the
+# `poker-predictor train --model torch` CLI verb work.
+-r base.txt
+
+# Upper bound: modern PyTorch has already broken this codebase once
+# (ReduceLROnPlateau(verbose=True) — see poker/docs/BUG_AUDIT.md item 2).
+torch>=2.3,<3.0
