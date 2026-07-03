@@ -28,6 +28,11 @@ vignettes/*.pdf
 # OAuth2 token, see https://github.com/hadley/httr/releases/tag/v0.3
 .httr-oauth
 
+# Materialised PokerBench prompt SQL sandbox (regenerable from parquet mirror
+# or raw PokerBench via `scripts/spin_up_prompt_sandbox.sh`).
+data/pokerbench_prompts.sqlite
+data/pokerbench_prompts.sqlite-journal
+
 # knitr and R markdown default cache directories
 *_cache/
 /cache/

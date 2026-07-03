@@ -101,11 +101,34 @@ python src/evaluation/evaluate.py --model_path data/models/best_model.pkl
 
 ## Model Performance
 
-| Model Type | Test Accuracy | Notes |
-|------------|---------------|-------|
-| XGBoost | TBD | Baseline model |
-| Neural Network | TBD | Sequential action processing |
-| Fine-tuned LLM | TBD | Natural language understanding |
+Measured by [`notebooks/02_prediction_success_evaluation.ipynb`](notebooks/02_prediction_success_evaluation.ipynb)
+against the 1 000-hand PokerBench preflop test split (canonicalised to
+`{fold, check, call, raise}`; 4-class balanced 250 rows/class):
+
+| Model | Test Accuracy | Macro-F1 | Log-Loss | Top-2 | Fit (s) |
+|-------|--------------:|---------:|---------:|------:|--------:|
+| LightGBM        | **0.969** | 0.969 | 0.085 | 1.000 | 3.2 |
+| HistGradientBoosting | 0.961 | 0.961 | 0.104 | 1.000 | 3.4 |
+| XGBoost         | 0.960 | 0.960 | 0.100 | 0.999 | 1.9 |
+| RandomForest    | 0.925 | 0.925 | 0.196 | 0.999 | 1.0 |
+| MLP (sklearn)   | 0.922 | 0.922 | 0.192 | 0.997 | 2.5 |
+| LogisticRegression | 0.862 | 0.862 | 0.334 | 0.993 | 4.1 |
+
+Reproduce with:
+
+```bash
+jupyter nbconvert --to notebook --execute notebooks/02_prediction_success_evaluation.ipynb \
+    --output 02_prediction_success_evaluation.ipynb
+```
+
+Results are persisted to `data/evaluation/multi_algo_results.json`.
+
+## Notebooks
+
+| notebook | what it does |
+|----------|--------------|
+| [`notebooks/01_quickstart.ipynb`](notebooks/01_quickstart.ipynb) | Auto-downloads PokerBench, runs preprocess → feature engineering → XGBoost training → evaluation → feature importance → single-hand prediction → model save. Doubles as an integration test for `scripts/run_pipeline.py`. |
+| [`notebooks/02_prediction_success_evaluation.ipynb`](notebooks/02_prediction_success_evaluation.ipynb) | Head-to-head **prediction-of-success evaluation** across 6 algorithms (logistic / random forest / hist-gradient-boosting / XGBoost / LightGBM / sklearn MLP) on identical features. Reports the leaderboard above plus per-class F1/recall tables, confusion matrices, and a shared calibration curve. |
 
 ## Future Enhancements
 

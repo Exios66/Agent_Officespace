@@ -1,6 +1,7 @@
 """Assemble a flat feature vector from a :class:`PreflopSample`."""
 from __future__ import annotations
 
+import re
 from collections.abc import Iterable
 
 import numpy as np
@@ -49,12 +50,26 @@ def build_feature_matrix(samples: Iterable[PreflopSample]) -> tuple[pd.DataFrame
 
 ACTION_LABELS = ["fold", "check", "call", "raise", "allin"]
 
+# PokerBench frequently records the "raise to X" decision as a bare bet-size
+# string such as ``"3.0bb"`` or ``"18.5bb"``. Any label matching this pattern
+# is canonicalised to ``"raise"`` so it doesn't spawn its own singleton class
+# during training / stratified splits.
+_BET_SIZING_RE = re.compile(r"^\d+(?:\.\d+)?\s*bb$")
+
 
 def canonical_action_label(raw: str | None) -> str | None:
-    """Map free-form PokerBench labels (e.g. 'bet 24', 'Check', 'Raise 3.0bb') to canonical."""
+    """Map free-form PokerBench labels (e.g. ``bet 24``, ``Check``, ``Raise 3.0bb``,
+    or the bare bet-size shorthand ``3.0bb``) to one of
+    ``{fold, check, call, raise, allin}``.
+
+    Returns ``None`` for missing labels and any unrecognised free-form token so
+    the caller can drop / ignore that row.
+    """
     if raw is None:
         return None
     r = raw.strip().lower()
+    if not r:
+        return None
     if r.startswith("fold"):
         return "fold"
     if r.startswith("check"):
@@ -65,4 +80,6 @@ def canonical_action_label(raw: str | None) -> str | None:
         return "allin"
     if r.startswith("bet") or r.startswith("raise"):
         return "raise"
-    return r
+    if _BET_SIZING_RE.match(r):
+        return "raise"
+    return None

@@ -227,24 +227,36 @@ class ActionSequenceEncoder:
         self.action_to_idx = {act: idx for idx, act in enumerate(self.ACTION_TYPES)}
         self.position_to_idx = {pos: idx for idx, pos in enumerate(self.POSITIONS)}
     
-    def encode_action_sequence(self, actions: List[Dict[str, any]], 
-                              max_length: int = 20) -> Dict[str, any]:
+    def encode_action_sequence(self, actions, max_length: int = 20) -> Dict[str, any]:
         """
         Encode action sequence into numerical features.
-        
+
         Args:
-            actions: List of action dictionaries
+            actions: iterable of action dictionaries (may be a Python list, a
+                numpy object array as loaded from parquet, or ``None`` /
+                ``NaN`` from CSV).
             max_length: Maximum sequence length
-            
+
         Returns:
             Dictionary of encoded features
         """
-        if not actions:
+        # `if not actions` is ambiguous for numpy arrays (which is how
+        # `action_sequence` deserialises out of parquet) and raises for
+        # scalar NaN, so normalise to a Python list first.
+        if actions is None:
+            actions = []
+        elif isinstance(actions, np.ndarray):
+            actions = actions.tolist()
+        elif isinstance(actions, float) and np.isnan(actions):
+            actions = []
+
+        if len(actions) == 0:
             return {
                 'action_count': 0,
                 'fold_count': 0,
                 'call_count': 0,
                 'raise_count': 0,
+                'allin_count': 0,
                 'aggression_factor': 0.0,
                 'last_action_type': -1,
                 'last_action_amount': 0.0
@@ -295,20 +307,37 @@ class PokerFeatureEngineer:
     def engineer_features(self, df: pd.DataFrame) -> pd.DataFrame:
         """
         Apply full feature engineering pipeline.
-        
+
         Args:
             df: DataFrame with preprocessed data
-            
+
         Returns:
             DataFrame with engineered features
         """
         print("Engineering poker features...")
-        
+
         df_features = df.copy()
-        
+
+        def _merge(base: pd.DataFrame, extra_df: pd.DataFrame) -> pd.DataFrame:
+            """Append ``extra_df`` to ``base``, letting new columns overwrite
+            existing ones of the same name.
+
+            Some upstream columns (e.g. ``pot_size``) are re-emitted by our
+            feature helpers; ``pd.concat`` would then create duplicate column
+            names, which parquet write refuses. Overwriting is safer and
+            preserves the newer, engineered value.
+            """
+            overlap = base.columns.intersection(extra_df.columns)
+            if len(overlap) > 0:
+                base = base.drop(columns=list(overlap))
+            return pd.concat(
+                [base.reset_index(drop=True), extra_df.reset_index(drop=True)],
+                axis=1,
+            )
+
         # Hand strength features
-        if all(col in df.columns for col in ['hero_card1_rank', 'hero_card2_rank', 
-                                               'hero_card1_suit', 'hero_card2_suit']):
+        if all(col in df.columns for col in ['hero_card1_rank', 'hero_card2_rank',
+                                             'hero_card1_suit', 'hero_card2_suit']):
             print("  - Hand strength features")
             hand_features = df.apply(
                 lambda row: self.hand_evaluator.get_hand_strength(
@@ -317,8 +346,8 @@ class PokerFeatureEngineer:
                 ), axis=1
             )
             hand_features_df = pd.DataFrame(hand_features.tolist())
-            df_features = pd.concat([df_features, hand_features_df], axis=1)
-        
+            df_features = _merge(df_features, hand_features_df)
+
         # Position features
         if 'hero_pos' in df.columns:
             print("  - Position features")
@@ -326,22 +355,21 @@ class PokerFeatureEngineer:
                 lambda pos: self.position_extractor.get_position_features(pos)
             )
             position_features_df = pd.DataFrame(position_features.tolist())
-            df_features = pd.concat([df_features, position_features_df], axis=1)
-        
+            df_features = _merge(df_features, position_features_df)
+
         # Pot odds features
         if 'pot_size' in df.columns:
             print("  - Pot odds features")
-            # Estimate effective stack (can be improved with actual stack data)
-            df_features['estimated_stack'] = df_features['pot_size'] * 5  # Rough estimate
-            
+            df_features['estimated_stack'] = df_features['pot_size'] * 5
+
             pot_features = df_features.apply(
                 lambda row: self.pot_calculator.get_pot_features(
                     row['pot_size'], row['estimated_stack']
                 ), axis=1
             )
             pot_features_df = pd.DataFrame(pot_features.tolist())
-            df_features = pd.concat([df_features, pot_features_df], axis=1)
-        
+            df_features = _merge(df_features, pot_features_df)
+
         # Action sequence features
         if 'action_sequence' in df.columns:
             print("  - Action sequence features")
@@ -349,8 +377,8 @@ class PokerFeatureEngineer:
                 self.action_encoder.encode_action_sequence
             )
             action_features_df = pd.DataFrame(action_features.tolist())
-            df_features = pd.concat([df_features, action_features_df], axis=1)
-        
+            df_features = _merge(df_features, action_features_df)
+
         print(f"Final feature shape: {df_features.shape}")
         return df_features
 

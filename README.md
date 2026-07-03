@@ -120,6 +120,119 @@ hf jobs uv run --flavor a10-large --secrets HF_TOKEN \
 - `villain_fold_brier` — calibration of the bluff-success head.
 - `bluff_ev_mean` / `bluff_positive_frac` — the aggregate bluff-EV backtest.
 
+### Notebooks
+
+Three top-level notebooks under [`notebooks/`](notebooks/) run end-to-end
+against the live PokerBench download and are re-executed as part of this
+branch:
+
+| notebook | what it does |
+|---|---|
+| [`01_eda_preflop.ipynb`](notebooks/01_eda_preflop.ipynb) | Preflop EDA: canonical action distribution, position mix, pot / stack profile, hand-class action mix. |
+| [`02_baseline_metrics.ipynb`](notebooks/02_baseline_metrics.ipynb) | Trains the LightGBM multi-head baseline via `poker_predictor.training.train_classical.train` and reports `top1_accuracy`, `action_log_loss`, `villain_fold_brier`, `bluff_ev_mean`, `bluff_positive_frac` on the 1k test split. |
+| [`03_prediction_success_evaluation.ipynb`](notebooks/03_prediction_success_evaluation.ipynb) | **Prediction-of-success evaluation**: trains 5 algorithm families on identical features (logistic, random forest, hist-gradient-boosting, LightGBM, XGBoost) and reports accuracy / macro-F1 / log-loss / top-2 accuracy / per-class metrics / fit-time / inference throughput, plus per-model confusion matrices, a shared calibration curve on `p(raise)`, and a bluff-EV backtest against the dedicated villain-fold head. Results are persisted to `artifacts/prediction_success_eval/multi_algo_results.json`. |
+| [`04_rf_action_and_success_predictors.ipynb`](notebooks/04_rf_action_and_success_predictors.ipynb) | **Random Forest action classifiers + Random Forest *success* predictors**. Part A trains 4 RF variants (baseline / deep / class-balanced / isotonic-calibrated) on the same features and ranks them. Part B trains, for each of 4 primary action models (LightGBM / XGBoost / RF-tuned / logistic), an `RandomForestClassifier`-backed `SuccessPredictor` (`poker_predictor.models.success_predictor`) that estimates *"will the primary be correct on this specific spot?"*. Reports ROC-AUC / PR-AUC / Brier of the meta-model vs a naive `max(proba)` confidence baseline, plots per-primary coverage-vs-retained-accuracy curves, and outputs a **trust-policy table** ("at what confidence threshold can I automate 99% / 98% / 97% / 95% of the spots?"). Results are persisted to `artifacts/rf_success_predictor/rf_success_results.json`. |
+
+Latest execution of `03_prediction_success_evaluation.ipynb` (20 000 training
+rows, 1 000 test rows, 4 canonical actions):
+
+| model | accuracy | macro-F1 | log-loss | top-2 acc | fit (s) |
+|---|---:|---:|---:|---:|---:|
+| xgboost       | 0.964 | 0.964 | 0.111 | 0.999 | 2.0 |
+| hist_gbm      | 0.954 | 0.954 | 0.211 | 0.980 | 2.6 |
+| lightgbm      | 0.951 | 0.951 | 0.140 | 0.992 | 3.2 |
+| random_forest | 0.943 | 0.943 | 0.187 | 0.998 | 1.3 |
+| logistic      | 0.821 | 0.820 | 0.364 | 0.996 | 1.9 |
+
+Latest execution of `04_rf_action_and_success_predictors.ipynb` (12k
+primary-train rows, 8k meta-train rows, 1k test rows):
+
+**Random Forest action classifiers (Part A)**
+
+| variant | accuracy | log-loss |
+|---|---:|---:|
+| rf_deep            | 0.949 | 0.177 |
+| rf_baseline        | 0.940 | 0.234 |
+| rf_balanced        | 0.936 | 0.167 |
+| rf_calibrated_iso  | 0.922 | 0.635 |
+
+**Random Forest success predictors (Part B) — ROC-AUC on "is primary right?"**
+
+| primary | naive `max(proba)` | **RF meta-model** | Δ |
+|---|---:|---:|---:|
+| lightgbm | 0.897 | **0.919** | +0.022 |
+| xgboost  | 0.857 | **0.898** | +0.041 |
+| rf_tuned | 0.861 | **0.924** | +0.063 |
+| logistic | 0.829 | **0.903** | +0.074 |
+
+**Trust policy — max coverage while retaining ≥ 99% accuracy on kept spots**
+
+| primary | full-cov acc | 99% target coverage |
+|---|---:|---:|
+| lightgbm | 0.947 | 0.894 |
+| xgboost  | 0.961 | 0.852 |
+| rf_tuned | 0.949 | 0.821 |
+| logistic | 0.814 | 0.541 |
+
+Run any notebook with:
+
+```bash
+jupyter nbconvert --to notebook --execute notebooks/03_prediction_success_evaluation.ipynb --output 03_prediction_success_evaluation.ipynb
+jupyter nbconvert --to notebook --execute notebooks/04_rf_action_and_success_predictors.ipynb --output 04_rf_action_and_success_predictors.ipynb
+```
+
+### PokerBench prompt SQL sandbox
+
+A queryable, cloud-shippable database of every natural-language
+"situation-stylized" prompt in the PokerBench preflop split. See
+[`reports/PROMPT_DB_CANVAS.md`](reports/PROMPT_DB_CANVAS.md) for the
+full walkthrough (ERD, table reference, 10 worked queries, cloud
+publish path). Quick start:
+
+```bash
+# 1) Local SQLite sandbox (builds in ~15 s, opens the sqlite3 REPL)
+bash scripts/spin_up_prompt_sandbox.sh
+
+# 2) Ad-hoc query (console entry point installed by `pip install -e .`)
+pokerbench-promptdb query \
+    "SELECT hero_pos, canonical_label, COUNT(*)
+       FROM situations GROUP BY 1,2 ORDER BY 1,2" \
+    --db-path data/pokerbench_prompts.sqlite
+
+# 3) Postgres sandbox (docker-compose: Postgres 16 + Adminer + loader)
+docker compose -f deploy/postgres-sandbox/docker-compose.yml up -d
+
+# 4) Publish to Hugging Face Datasets (SQLite + Parquet mirror)
+pokerbench-promptdb publish-hf <you>/pokerbench-prompt-db
+```
+
+Materialised from `RZ412/PokerBench` (60k train + 1k test):
+**64,200 situations · 283,750 prev-line actions · 138,331 available-move
+rows · 385,200 seat rows · 57 raw label variants → 4 canonical labels ·
+6 decision-type classes**. Every prompt slot (positions, blinds, hero
+holding, prev-line, pot size) is parsed into a normalised column, so
+queries like "what's the solver's mix on BTN with AKo?" or "which hand
+classes are most often facing an all-in?" are one-liner SQL. Full
+schema: [`poker_predictor/data/prompt_db.py`](poker_predictor/data/prompt_db.py).
+
+### Consolidated metrics report
+
+Every quantitative result produced by the notebooks and scripts on this
+branch is consolidated in [`reports/METRICS_REPORT.md`](reports/METRICS_REPORT.md).
+It covers:
+
+- Multi-algorithm action leaderboards for both `poker_predictor/` (20k
+  train) and `poker/` (15.2k + 50.6k train).
+- Per-class precision / recall / F1 tables and confusion matrices.
+- Poker-domain metrics (`top1_accuracy`, `action_log_loss`,
+  `villain_fold_brier`, `bluff_ev_mean`, `bluff_positive_frac`).
+- Four Random Forest action variants (baseline / deep / balanced /
+  isotonic-calibrated).
+- Success-of-prediction meta-model results: ROC-AUC / PR-AUC / Brier
+  for each primary, coverage-vs-accuracy curves, and a trust-policy
+  table for automating decisions at target accuracy levels 95% / 97%
+  / 98% / 99%.
+
 ### Refinement roadmap
 
 Concrete extensions once we ingest richer data:

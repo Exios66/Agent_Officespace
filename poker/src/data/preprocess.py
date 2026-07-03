@@ -136,6 +136,42 @@ class PokerDataPreprocessor:
 
         return actions
     
+    # PokerBench encodes "raise to X" as a bare bet-size string (e.g. ``3.0bb``)
+    # instead of a leading verb. Any such token collapses to ``raise`` so we
+    # keep the label space at a stable {fold, check, call, raise, allin}.
+    _BET_SIZING_RE = re.compile(r"^\d+(?:\.\d+)?\s*bb$")
+
+    @classmethod
+    def _canonical_decision(cls, raw) -> str:
+        """Canonicalise a raw ``correct_decision`` string to one of
+        ``{fold, check, call, raise, allin, unknown}``.
+
+        PokerBench decisions come in many flavours: bare verbs (``fold``,
+        ``check``), verb+size (``bet 24``, ``Raise 3.0bb``), size-only
+        (``3.0bb``), and all-in (``all-in``, ``allin``). Squashing them to
+        the 5 canonical actions is required for the multiclass classifier to
+        train on stratified splits — otherwise singleton size classes crash
+        both the split and ``classification_report``.
+        """
+        if not isinstance(raw, str):
+            return 'unknown'
+        r = raw.strip().lower()
+        if not r:
+            return 'unknown'
+        if r.startswith('fold'):
+            return 'fold'
+        if r.startswith('check'):
+            return 'check'
+        if r.startswith('call'):
+            return 'call'
+        if r.startswith('allin') or r.startswith('all-in') or r.startswith('all in'):
+            return 'allin'
+        if r.startswith('bet') or r.startswith('raise'):
+            return 'raise'
+        if cls._BET_SIZING_RE.match(r):
+            return 'raise'
+        return 'unknown'
+
     def extract_preflop_features(self, df: pd.DataFrame) -> pd.DataFrame:
         """
         Extract features from preflop data.
@@ -193,7 +229,7 @@ class PokerDataPreprocessor:
         # Parse decision
         if 'correct_decision' in df.columns:
             features_df['decision_type'] = features_df['correct_decision'].apply(
-                lambda x: x.split()[0].lower() if isinstance(x, str) else 'unknown'
+                self._canonical_decision
             )
         
         # Convert numeric columns
