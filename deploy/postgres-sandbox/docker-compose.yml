@@ -1,0 +1,69 @@
+version: "3.9"
+
+# ------------------------------------------------------------------------------
+# PokerBench-prompt Postgres sandbox
+#
+# Bring up a fresh Postgres 16 instance, an Adminer web UI, and a one-shot
+# loader container that populates the DB from the repo's Parquet mirror
+# (data/pokerbench_prompts_parquet/) — no PokerBench download required.
+#
+#   docker compose -f deploy/postgres-sandbox/docker-compose.yml up -d
+#   docker compose -f deploy/postgres-sandbox/docker-compose.yml logs -f loader
+#
+# Then open:
+#   - Adminer UI:  http://localhost:8080
+#     server=postgres, user=pokerbench, password=pokerbench, db=pokerbench
+#   - psql:        psql "postgres://pokerbench:pokerbench@localhost:5433/pokerbench"
+# ------------------------------------------------------------------------------
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: pokerbench
+      POSTGRES_PASSWORD: pokerbench
+      POSTGRES_DB: pokerbench
+    ports:
+      - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ../../data/pokerbench_prompts_parquet:/data/parquet:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pokerbench -d pokerbench"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+
+  adminer:
+    image: adminer:4
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+
+  loader:
+    image: python:3.11-slim
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ../..:/workspace:ro
+    working_dir: /workspace
+    environment:
+      PGHOST: postgres
+      PGPORT: "5432"
+      PGUSER: pokerbench
+      PGPASSWORD: pokerbench
+      PGDATABASE: pokerbench
+      PB_PARQUET_DIR: /workspace/data/pokerbench_prompts_parquet
+      PYTHONPATH: /workspace
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        set -e
+        pip install --quiet --no-cache-dir 'psycopg[binary]>=3.1' 'pandas>=2.0' 'pyarrow>=14'
+        python3 deploy/postgres-sandbox/load_from_parquet.py
+
+volumes:
+  pgdata:
