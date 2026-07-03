@@ -154,8 +154,16 @@ poker-predictor reason generate --source hub --split train \
 ```
 
 The output JSONL is the same `{"messages": [...]}` shape as
-`prepare_sft.py`, so it plugs straight into `train_sft_job.py`. The
-pipeline is checkpointed — a mid-run failure resumes without
+`prepare_sft.py`, so it plugs straight into `train_sft_job.py`. Two
+output styles are supported: the default `concise` format (paragraph +
+`Decision: <action>` line) and a `structured` format that emits
+`### Strategic Analysis / ### Mathematical Calculations / ### Action`
+sections — pick with `--style structured` when you want per-section
+grading during RL / DPO. Fully worked hand-authored examples in both
+styles live in
+[`data/examples/reasoning_sft_examples.md`](data/examples/reasoning_sft_examples.md).
+
+The pipeline is checkpointed — a mid-run failure resumes without
 re-labeling completed rows, which matters when the labeler costs
 money per call. Install extras with `pip install -e '.[reason]'`
 (or `pip install -r requirements/reason.txt`). Full walkthrough,

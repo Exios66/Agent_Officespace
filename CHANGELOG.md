@@ -10,6 +10,56 @@ Version `0.1.0` corresponds to the state of the canonical
 
 ## [Unreleased] — cursor/reasoning-trace-augmentation-0cdc
 
+### Added — structured output style + hand-authored example set
+
+Second output format for the reasoning pipeline: `structured`,
+emitting section-tagged assistant turns
+(`### Strategic Analysis` / `### Mathematical Calculations` /
+`### Action`). Selectable at any layer of the API:
+
+- Prompt templates: `STRUCTURED_STUDENT_SYSTEM_PROMPT`,
+  `STRUCTURED_LABELER_SYSTEM_PROMPT`,
+  `build_structured_assistant_response`, `system_prompt_for_style`,
+  `labeler_system_prompt_for_style` in
+  [`prompts.py`](poker_predictor/llm/reasoning/prompts.py).
+- All three labelers (`OpenAILabeler`, `SolverAPILabeler`,
+  `TemplateLabeler`) now accept `style="structured"` and swap their
+  labeler system prompt + tail-normaliser accordingly (structured
+  traces are normalised on the `### Action` block rather than the
+  `Decision:` line).
+- `AugmentedRow.style` is persisted in the emitted metadata and
+  drives `student_assistant_content()`.
+- CLI: `poker-predictor reason generate --style {concise,structured}`
+  (defaults to `concise`). The student system prompt auto-switches to
+  match the style unless overridden explicitly with `--system-prompt`.
+
+Companion hand-authored example set in
+[`data/examples/`](data/examples/):
+
+- [`reasoning_sft_examples.md`](data/examples/reasoning_sft_examples.md)
+  — 8 diverse PokerBench-style prompts (preflop opens, 3-bet / 4-bet
+  defends, flop c-bet / check-raise, turn semi-bluff, river overbet),
+  each shown in **both** the `concise` and `structured` formats
+  side-by-side.
+- [`reasoning_sft_examples.concise.jsonl`](data/examples/reasoning_sft_examples.concise.jsonl) —
+  the same 8 examples as TRL `{"messages": [...]}` rows in the
+  `concise` style.
+- [`reasoning_sft_examples.structured.jsonl`](data/examples/reasoning_sft_examples.structured.jsonl) —
+  same in the `structured` style.
+- [`reasoning_sft_examples.rows.jsonl`](data/examples/reasoning_sft_examples.rows.jsonl) —
+  the raw `{instruction, output, row_id}` rows the two JSONL files
+  are derived from, so contributors can rebuild them via
+  `poker-predictor reason generate --source jsonl:...`.
+- [`data/examples/README.md`](data/examples/README.md) — index /
+  regeneration recipe.
+- Two additional regression tests in
+  [`tests/test_reasoning_labeler.py`](tests/test_reasoning_labeler.py):
+  structured `TemplateLabeler` emits all three sections and no
+  `Decision:` line; `OpenAILabeler(style="structured")` rewrites a
+  wrong `### Action` block to match the gold action.
+- [`data/README.md`](data/README.md) links the new `examples/`
+  subdirectory.
+
 ### Added — reasoning-trace augmentation for PokerBench SFT data
 
 New [`poker_predictor/llm/reasoning/`](poker_predictor/llm/reasoning/)
@@ -100,7 +150,11 @@ Subpackage layout:
 
 ### Verification
 
-- `python3 -m pytest tests/test_reasoning_labeler.py -q` → 16 passed.
+- `python3 -m pytest tests/test_reasoning_labeler.py -q` → 19 passed
+  (16 baseline + 3 structured-style).
+- `data/examples/*.jsonl` validated: 3 messages / row, correct role
+  order, concise rows end in `Decision:`, structured rows contain
+  `### Action` and no `Decision:` line.
 - `python3 -c "from poker_predictor.llm.reasoning import ..."` imports
   cleanly with only `pydantic` + `typer` + `rich` installed (i.e. the
   base stack) — no accidental imports of `openai`, `httpx`, `pandas`,
