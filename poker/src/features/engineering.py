@@ -11,6 +11,7 @@ This module contains advanced poker-specific feature engineering including:
 import pandas as pd
 import numpy as np
 from typing import Dict, List, Tuple, Optional
+import json
 import warnings
 
 
@@ -84,30 +85,25 @@ class HandStrengthEvaluator:
             card1_rank, card2_rank, card1_suit, card2_suit
         )
         
-        # Find hand group
-        hand_group = 9  # Default: weak hand
-        for group_num in range(1, 9):
-            if (hand, is_suited) in [(h[0], h[1]) for h in self.HAND_GROUPS.get(group_num, [])]:
-                hand_group = group_num
-                break
+        # Find hand group using precomputed lookup
+        hand_group = self.hand_to_group.get((hand, is_suited), 9)
         
         # Calculate additional features
         rank1_val = self.RANK_VALUES.get(card1_rank, 0)
         rank2_val = self.RANK_VALUES.get(card2_rank, 0)
         
         features = {
-            'hand_notation': hand,
             'is_suited': int(is_suited),
             'is_pair': int(is_pair),
             'hand_group': hand_group,
-            'hand_strength_score': 1.0 / hand_group if hand_group > 0 else 0,  # Normalized strength
+            'hand_strength_score': 1.0 / hand_group if hand_group > 0 else 0,
             'high_card_value': max(rank1_val, rank2_val),
             'low_card_value': min(rank1_val, rank2_val),
             'rank_gap': abs(rank1_val - rank2_val),
             'has_ace': int('A' in [card1_rank, card2_rank]),
             'has_face': int(any(r in ['J', 'Q', 'K', 'A'] for r in [card1_rank, card2_rank])),
-            'is_premium': int(hand_group <= 2),  # Top 2 groups
-            'is_playable': int(hand_group <= 5)  # Top 5 groups
+            'is_premium': int(hand_group <= 2),
+            'is_playable': int(hand_group <= 5),
         }
         
         return features
@@ -200,13 +196,12 @@ class PotOddsCalculator:
         spr = self.calculate_spr(effective_stack, pot_size)
         
         features = {
-            'pot_size': pot_size,
             'effective_stack': effective_stack,
-            'spr': min(spr, 50.0),  # Cap at 50 for numerical stability
+            'spr': min(spr, 50.0),
             'pot_to_stack_ratio': pot_size / effective_stack if effective_stack > 0 else 0,
             'is_low_spr': int(spr < 3),
             'is_medium_spr': int(3 <= spr <= 8),
-            'is_high_spr': int(spr > 8)
+            'is_high_spr': int(spr > 8),
         }
         
         if last_bet_size is not None:
@@ -226,6 +221,19 @@ class ActionSequenceEncoder:
     def __init__(self):
         self.action_to_idx = {act: idx for idx, act in enumerate(self.ACTION_TYPES)}
         self.position_to_idx = {pos: idx for idx, pos in enumerate(self.POSITIONS)}
+
+    @staticmethod
+    def _normalize_actions(actions) -> List[Dict[str, any]]:
+        """Normalize action sequences loaded from CSV/Parquet."""
+        if actions is None or (isinstance(actions, float) and pd.isna(actions)):
+            return []
+        if isinstance(actions, np.ndarray):
+            actions = actions.tolist()
+        if isinstance(actions, str):
+            return json.loads(actions) if actions else []
+        if not isinstance(actions, list):
+            return []
+        return actions
     
     def encode_action_sequence(self, actions: List[Dict[str, any]], 
                               max_length: int = 20) -> Dict[str, any]:
@@ -239,7 +247,9 @@ class ActionSequenceEncoder:
         Returns:
             Dictionary of encoded features
         """
-        if not actions:
+        actions = self._normalize_actions(actions)
+
+        if len(actions) == 0:
             return {
                 'action_count': 0,
                 'fold_count': 0,
@@ -254,10 +264,8 @@ class ActionSequenceEncoder:
         action_counts = {'fold': 0, 'call': 0, 'bet': 0, 'raise': 0, 'allin': 0}
         for action in actions:
             action_type = action['action'].lower()
-            for key in action_counts:
-                if key in action_type:
-                    action_counts[key] += 1
-                    break
+            if action_type in action_counts:
+                action_counts[action_type] += 1
         
         # Aggression factor: (bets + raises) / calls
         aggressive_actions = action_counts['bet'] + action_counts['raise'] + action_counts['allin']
@@ -322,8 +330,12 @@ class PokerFeatureEngineer:
         # Position features
         if 'hero_pos' in df.columns:
             print("  - Position features")
-            position_features = df['hero_pos'].apply(
-                lambda pos: self.position_extractor.get_position_features(pos)
+            position_features = df.apply(
+                lambda row: self.position_extractor.get_position_features(
+                    row['hero_pos'],
+                    int(row['num_players']) if pd.notna(row.get('num_players')) else 6,
+                ),
+                axis=1,
             )
             position_features_df = pd.DataFrame(position_features.tolist())
             df_features = pd.concat([df_features, position_features_df], axis=1)
@@ -345,7 +357,10 @@ class PokerFeatureEngineer:
         # Action sequence features
         if 'action_sequence' in df.columns:
             print("  - Action sequence features")
-            action_features = df['action_sequence'].apply(
+            normalized_actions = df['action_sequence'].apply(
+                self.action_encoder._normalize_actions
+            )
+            action_features = normalized_actions.apply(
                 self.action_encoder.encode_action_sequence
             )
             action_features_df = pd.DataFrame(action_features.tolist())

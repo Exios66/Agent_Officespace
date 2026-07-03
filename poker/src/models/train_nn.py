@@ -16,8 +16,16 @@ import numpy as np
 from pathlib import Path
 from typing import Dict, List, Tuple, Optional
 import json
+import sys
+from pathlib import Path
 from tqdm import tqdm
 from sklearn.preprocessing import LabelEncoder
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+from src.features.feature_utils import prepare_features as build_features
 
 
 class PokerDataset(Dataset):
@@ -151,49 +159,33 @@ class PokerNNTrainer:
         
         print(f"Using device: {self.device}")
     
-    def prepare_features(self, df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.Series]:
+    def prepare_features(
+        self,
+        df: pd.DataFrame,
+        fit: bool = True,
+    ) -> Tuple[pd.DataFrame, pd.Series]:
         """
-        Prepare features for training.
-        
+        Prepare features for training or inference.
+
         Args:
             df: DataFrame with engineered features
-            
+            fit: Whether to infer feature columns and fit label encoder
+
         Returns:
             Tuple of (X, y)
         """
-        # Identify target column
-        target_col = None
-        for col in ['decision_type', 'correct_decision']:
-            if col in df.columns:
-                target_col = col
-                break
-        
-        if target_col is None:
-            raise ValueError("No target column found in dataframe")
-        
-        # Separate features and target
-        y = df[target_col].copy()
-        
-        # Select numeric features
-        numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
-        
-        # Exclude non-feature columns
-        exclude_cols = [target_col, 'correct_decision', 'decision_type']
-        feature_cols = [col for col in numeric_cols if col not in exclude_cols]
-        
-        X = df[feature_cols].copy()
-        
-        # Handle missing values
-        X = X.fillna(0)
-        
-        # Handle inf values
-        X = X.replace([np.inf, -np.inf], 0)
-        
-        self.feature_names = feature_cols
-        
-        print(f"Prepared {len(feature_cols)} features")
+        X, y, feature_names, label_encoder = build_features(
+            df,
+            feature_names=self.feature_names,
+            label_encoder=self.label_encoder,
+            fit=fit,
+        )
+        self.feature_names = feature_names
+        self.label_encoder = label_encoder
+
+        print(f"Prepared {len(feature_names)} features")
         print(f"Target distribution:\n{y.value_counts()}")
-        
+
         return X, y
     
     def create_model(self, input_dim: int, output_dim: int) -> nn.Module:
@@ -277,7 +269,7 @@ class PokerNNTrainer:
         criterion = nn.CrossEntropyLoss()
         optimizer = optim.Adam(self.model.parameters(), lr=lr)
         scheduler = optim.lr_scheduler.ReduceLROnPlateau(
-            optimizer, mode='max', factor=0.5, patience=5, verbose=True
+            optimizer, mode='max', factor=0.5, patience=5
         )
         
         # Training history
@@ -509,7 +501,7 @@ def main():
     trainer = PokerNNTrainer(model_type=args.model_type)
     
     # Prepare features
-    X, y = trainer.prepare_features(df_train)
+    X, y = trainer.prepare_features(df_train, fit=True)
     
     # Split into train and validation
     X_train, X_val, y_train, y_val = train_test_split(
@@ -529,7 +521,7 @@ def main():
     if test_path.exists():
         print("\nLoading test data...")
         df_test = pd.read_parquet(test_path)
-        X_test, y_test = trainer.prepare_features(df_test)
+        X_test, y_test = trainer.prepare_features(df_test, fit=False)
         
         # Evaluate
         test_results = trainer.evaluate(X_test, y_test, batch_size=args.batch_size)

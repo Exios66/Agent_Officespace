@@ -7,6 +7,8 @@ Supports:
 - Comparison across models
 """
 
+import sys
+
 import pandas as pd
 import numpy as np
 from pathlib import Path
@@ -20,6 +22,12 @@ from sklearn.metrics import (
 )
 import matplotlib.pyplot as plt
 import seaborn as sns
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+from src.features.feature_utils import normalize_labels
 
 
 class ModelEvaluator:
@@ -42,23 +50,25 @@ class ModelEvaluator:
             Dictionary of metrics
         """
         # Basic metrics
-        accuracy = accuracy_score(y_true, y_pred)
-        
+        accuracy = accuracy_score(y_true, y_pred, normalize=True)
+
+        label_values = labels if labels is not None else sorted(set(y_true) | set(y_pred))
+
         # Per-class metrics
         precision, recall, f1, support = precision_recall_fscore_support(
-            y_true, y_pred, average=None, zero_division=0
+            y_true, y_pred, labels=label_values, average=None, zero_division=0
         )
-        
+
         # Macro/Weighted averages
         precision_macro, recall_macro, f1_macro, _ = precision_recall_fscore_support(
-            y_true, y_pred, average='macro', zero_division=0
+            y_true, y_pred, labels=label_values, average='macro', zero_division=0
         )
         precision_weighted, recall_weighted, f1_weighted, _ = precision_recall_fscore_support(
-            y_true, y_pred, average='weighted', zero_division=0
+            y_true, y_pred, labels=label_values, average='weighted', zero_division=0
         )
-        
+
         # Confusion matrix
-        cm = confusion_matrix(y_true, y_pred)
+        cm = confusion_matrix(y_true, y_pred, labels=label_values)
         
         results = {
             'accuracy': float(accuracy),
@@ -72,15 +82,14 @@ class ModelEvaluator:
         }
         
         # Per-class results
-        if labels:
-            results['per_class'] = {}
-            for i, label in enumerate(labels):
-                results['per_class'][label] = {
-                    'precision': float(precision[i]) if i < len(precision) else 0.0,
-                    'recall': float(recall[i]) if i < len(recall) else 0.0,
-                    'f1': float(f1[i]) if i < len(f1) else 0.0,
-                    'support': int(support[i]) if i < len(support) else 0
-                }
+        results['per_class'] = {}
+        for i, label in enumerate(label_values):
+            results['per_class'][label] = {
+                'precision': float(precision[i]) if i < len(precision) else 0.0,
+                'recall': float(recall[i]) if i < len(recall) else 0.0,
+                'f1': float(f1[i]) if i < len(f1) else 0.0,
+                'support': int(support[i]) if i < len(support) else 0
+            }
         
         return results
     
@@ -236,8 +245,9 @@ class PokerInference:
             if isinstance(features, dict):
                 features = pd.DataFrame([features])
             
-            # Ensure correct feature order
-            features = features[self.feature_names]
+            # Ensure correct feature order and fill missing columns
+            features = features.reindex(columns=self.feature_names, fill_value=0)
+            features = features.fillna(0).replace([np.inf, -np.inf], 0)
             
             if self.model_type == 'ml':
                 pred_encoded = self.model.predict(features)
@@ -418,9 +428,9 @@ def main():
         
         # Get true labels
         target_col = 'decision_type' if 'decision_type' in df_test.columns else 'correct_decision'
-        y_true = df_test[target_col].values
+        y_true = normalize_labels(df_test[target_col]).values
         y_pred = np.array(predictions)
-        
+
         # Get unique labels
         labels = sorted(set(list(y_true) + list(y_pred)))
         

@@ -25,7 +25,16 @@ import xgboost as xgb
 import lightgbm as lgb
 
 import warnings
+import sys
+from pathlib import Path
+
 warnings.filterwarnings('ignore')
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+from src.features.feature_utils import prepare_features as build_features
 
 
 class PokerMLTrainer:
@@ -47,49 +56,33 @@ class PokerMLTrainer:
         self.feature_names = None
         self.config = {}
     
-    def prepare_features(self, df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.Series]:
+    def prepare_features(
+        self,
+        df: pd.DataFrame,
+        fit: bool = True,
+    ) -> Tuple[pd.DataFrame, pd.Series]:
         """
-        Prepare features for training.
-        
+        Prepare features for training or inference.
+
         Args:
             df: DataFrame with engineered features
-            
+            fit: Whether to infer feature columns and fit label encoder
+
         Returns:
             Tuple of (X, y)
         """
-        # Identify target column
-        target_col = None
-        for col in ['decision_type', 'correct_decision']:
-            if col in df.columns:
-                target_col = col
-                break
-        
-        if target_col is None:
-            raise ValueError("No target column found in dataframe")
-        
-        # Separate features and target
-        y = df[target_col].copy()
-        
-        # Select numeric features
-        numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
-        
-        # Exclude non-feature columns
-        exclude_cols = [target_col, 'correct_decision', 'decision_type']
-        feature_cols = [col for col in numeric_cols if col not in exclude_cols]
-        
-        X = df[feature_cols].copy()
-        
-        # Handle missing values
-        X = X.fillna(0)
-        
-        # Handle inf values
-        X = X.replace([np.inf, -np.inf], 0)
-        
-        self.feature_names = feature_cols
-        
-        print(f"Prepared {len(feature_cols)} features")
+        X, y, feature_names, label_encoder = build_features(
+            df,
+            feature_names=self.feature_names,
+            label_encoder=self.label_encoder,
+            fit=fit,
+        )
+        self.feature_names = feature_names
+        self.label_encoder = label_encoder
+
+        print(f"Prepared {len(feature_names)} features")
         print(f"Target distribution:\n{y.value_counts()}")
-        
+
         return X, y
     
     def create_model(self, n_classes: int) -> any:
@@ -250,22 +243,29 @@ class PokerMLTrainer:
             Evaluation results
         """
         print("\nEvaluating model...")
-        
+
+        known_mask = y_test.isin(self.label_encoder.classes_)
+        if not known_mask.all():
+            dropped = int((~known_mask).sum())
+            print(f"Warning: dropping {dropped} test samples with unseen labels")
+            X_test = X_test.loc[known_mask].reset_index(drop=True)
+            y_test = y_test.loc[known_mask].reset_index(drop=True)
+
         # Encode labels
         y_test_encoded = self.label_encoder.transform(y_test)
-        
-        # Predict
         y_pred = self.model.predict(X_test)
-        y_pred_proba = self.model.predict_proba(X_test)
-        
+
         # Calculate metrics
         accuracy = accuracy_score(y_test_encoded, y_pred)
-        
-        # Classification report
+
+        labels = sorted(set(self.label_encoder.classes_))
         report = classification_report(
-            y_test_encoded, y_pred,
-            target_names=self.label_encoder.classes_,
-            output_dict=True
+            y_test_encoded,
+            y_pred,
+            labels=range(len(labels)),
+            target_names=labels,
+            output_dict=True,
+            zero_division=0,
         )
         
         # Confusion matrix
@@ -274,8 +274,11 @@ class PokerMLTrainer:
         print(f"\nTest Accuracy: {accuracy:.4f}")
         print("\nClassification Report:")
         print(classification_report(
-            y_test_encoded, y_pred,
-            target_names=self.label_encoder.classes_
+            y_test_encoded,
+            y_pred,
+            labels=range(len(labels)),
+            target_names=labels,
+            zero_division=0,
         ))
         
         results = {
@@ -406,7 +409,7 @@ def main():
     trainer = PokerMLTrainer(model_type=args.model_type)
     
     # Prepare features
-    X, y = trainer.prepare_features(df_train)
+    X, y = trainer.prepare_features(df_train, fit=True)
     
     # Split into train and validation
     X_train, X_val, y_train, y_val = train_test_split(
@@ -424,7 +427,7 @@ def main():
     if test_path.exists():
         print("\nLoading test data...")
         df_test = pd.read_parquet(test_path)
-        X_test, y_test = trainer.prepare_features(df_test)
+        X_test, y_test = trainer.prepare_features(df_test, fit=False)
         
         # Evaluate
         test_results = trainer.evaluate(X_test, y_test)

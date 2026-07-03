@@ -207,27 +207,39 @@ class PokerLLMTrainer:
     def tokenize_function(self, examples):
         """Tokenize examples for training."""
         if "text" in examples:
-            # Custom format
             texts = examples["text"]
-        elif "instruction" in examples:
-            # Alpaca format
+        elif "messages" in examples:
             texts = []
-            for inst, inp, out in zip(examples["instruction"], 
-                                     examples["input"], 
-                                     examples["output"]):
+            for messages in examples["messages"]:
+                parts = []
+                for message in messages:
+                    role = message["role"].capitalize()
+                    parts.append(f"{role}: {message['content']}")
+                texts.append("\n".join(parts))
+        elif "instruction" in examples:
+            texts = []
+            for inst, inp, out in zip(
+                examples["instruction"],
+                examples["input"],
+                examples["output"],
+            ):
                 if inp:
-                    text = f"### Instruction:\n{inst}\n\n### Input:\n{inp}\n\n### Response:\n{out}"
+                    text = (
+                        f"### Instruction:\n{inst}\n\n"
+                        f"### Input:\n{inp}\n\n"
+                        f"### Response:\n{out}"
+                    )
                 else:
                     text = f"### Instruction:\n{inst}\n\n### Response:\n{out}"
                 texts.append(text)
         else:
             raise ValueError("Unknown data format")
-        
+
         return self.tokenizer(
             texts,
             truncation=True,
             max_length=512,
-            padding="max_length"
+            padding="max_length",
         )
     
     def train(self, train_dataset: Dataset, eval_dataset: Optional[Dataset] = None,
@@ -273,8 +285,9 @@ class PokerLLMTrainer:
             mlm=False
         )
         
-        # Training arguments
-        training_args = TrainingArguments(
+        import inspect
+
+        training_kwargs = dict(
             output_dir=output_dir,
             num_train_epochs=num_epochs,
             per_device_train_batch_size=batch_size,
@@ -284,14 +297,22 @@ class PokerLLMTrainer:
             warmup_steps=100,
             logging_steps=10,
             save_steps=500,
-            eval_steps=500 if eval_tokenized else None,
-            evaluation_strategy="steps" if eval_tokenized else "no",
             save_total_limit=3,
-            load_best_model_at_end=True if eval_tokenized else False,
-            fp16=True if self.device == "cuda" else False,
-            report_to="tensorboard",
+            load_best_model_at_end=bool(eval_tokenized),
+            fp16=self.device == "cuda",
+            report_to="none",
             remove_unused_columns=True,
         )
+
+        if eval_tokenized is not None:
+            training_kwargs["eval_steps"] = 500
+            init_params = inspect.signature(TrainingArguments.__init__).parameters
+            if "eval_strategy" in init_params:
+                training_kwargs["eval_strategy"] = "steps"
+            else:
+                training_kwargs["evaluation_strategy"] = "steps"
+
+        training_args = TrainingArguments(**training_kwargs)
         
         # Trainer
         trainer = Trainer(
@@ -334,8 +355,14 @@ def main():
         help="HuggingFace model name"
     )
     parser.add_argument(
-        "--use-lora", action="store_true", default=True,
-        help="Use LoRA for efficient fine-tuning"
+        "--use-lora",
+        action="store_true",
+        help="Use LoRA for efficient fine-tuning",
+    )
+    parser.add_argument(
+        "--no-lora",
+        action="store_true",
+        help="Disable LoRA and run full fine-tuning",
     )
     parser.add_argument(
         "--epochs", type=int, default=3,
@@ -386,10 +413,12 @@ def main():
             print(f"Test data: {formatted_test_path}")
         return
     
+    use_lora = args.use_lora and not args.no_lora
+
     # Train model
     trainer_obj = PokerLLMTrainer(
         model_name=args.model_name,
-        use_lora=args.use_lora
+        use_lora=use_lora,
     )
     
     trainer_obj.setup_model_and_tokenizer()

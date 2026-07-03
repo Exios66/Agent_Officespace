@@ -61,7 +61,7 @@ class PokerDataPreprocessor:
         Returns:
             Tuple of (rank, suit)
         """
-        if len(card_str) != 2:
+        if not isinstance(card_str, str) or len(card_str) != 2:
             return ('?', '?')
         return (card_str[0], card_str[1])
     
@@ -92,40 +92,44 @@ class PokerDataPreprocessor:
         Returns:
             List of action dictionaries
         """
-        if pd.isna(action_str):
+        if pd.isna(action_str) or not isinstance(action_str, str):
             return []
-        
+
         actions = []
         parts = action_str.split('/')
-        
+
         i = 0
-        while i < len(parts):
-            if i + 1 < len(parts):
-                position = parts[i]
-                action = parts[i + 1]
-                
-                # Check if it's a bet/raise with amount
-                amount = None
-                if 'bb' in action:
-                    amount_str = action.replace('bb', '').strip()
-                    try:
-                        amount = float(amount_str)
-                    except ValueError:
-                        amount = None
-                    action_type = 'bet' if i == 0 or actions[-1]['action'] == 'fold' else 'raise'
-                else:
-                    action_type = action
-                
-                actions.append({
-                    'position': position,
-                    'action': action_type,
-                    'amount': amount
-                })
-                
-                i += 2
+        while i + 1 < len(parts):
+            position = parts[i]
+            action = parts[i + 1]
+
+            amount = None
+            action_lower = action.lower()
+
+            if 'bb' in action_lower:
+                amount_str = action_lower.replace('bb', '').strip()
+                try:
+                    amount = float(amount_str)
+                except ValueError:
+                    amount = None
+                action_type = (
+                    'bet'
+                    if not actions or actions[-1]['action'] == 'fold'
+                    else 'raise'
+                )
+            elif action_lower in self.ACTIONS:
+                action_type = action_lower
             else:
-                i += 1
-        
+                action_type = action_lower
+
+            actions.append({
+                'position': position,
+                'action': action_type,
+                'amount': amount,
+            })
+
+            i += 2
+
         return actions
     
     def extract_preflop_features(self, df: pd.DataFrame) -> pd.DataFrame:
@@ -142,6 +146,9 @@ class PokerDataPreprocessor:
         
         # Create a copy to avoid modifying original
         features_df = df.copy()
+
+        if 'Unnamed: 0' in features_df.columns:
+            features_df = features_df.drop(columns=['Unnamed: 0'])
         
         # Parse hero position
         if 'hero_pos' in df.columns:
@@ -176,10 +183,11 @@ class PokerDataPreprocessor:
             # Extract action sequence length
             features_df['num_actions'] = features_df['action_sequence'].apply(len)
             
-            # Count action types
             for action_type in ['fold', 'call', 'bet', 'raise', 'allin']:
                 features_df[f'num_{action_type}'] = features_df['action_sequence'].apply(
-                    lambda seq: sum(1 for act in seq if action_type in act['action'].lower())
+                    lambda seq, action=action_type: sum(
+                        1 for act in seq if act['action'].lower() == action
+                    )
                 )
         
         # Parse decision
