@@ -44,8 +44,8 @@ data/pokerbench_prompts.sqlite-journal
 # R Environment Variables
 .Renviron
 
-# pkgdown site
-docs/
+# pkgdown site (root-only; do not shadow poker/docs/ or other in-tree docs dirs)
+/docs/
 
 # translation temp files
 po/*~
