@@ -43,6 +43,7 @@ dev = [
 
 [project.scripts]
 poker-predictor = "poker_predictor.cli:app"
+pokerbench-promptdb = "poker_predictor.data.prompt_db_cli:main"
 
 [build-system]
 requires = ["setuptools>=68", "wheel"]
