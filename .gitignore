@@ -55,3 +55,39 @@ rsconnect/
 applications/slack/*
 applications/slack/**
 !applications/slack/README.md
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+env/
+build/
+dist/
+
+# Notebooks
+.ipynb_checkpoints/
+
+# ML artifacts / large data
+data/raw/
+data/interim/
+data/processed/
+artifacts/
+outputs/
+runs/
+wandb/
+trackio/
+*.ckpt
+*.pt
+*.pth
+*.bin
+*.safetensors
+*.gguf
+*.joblib
+!poker_predictor/**/*.joblib
+
