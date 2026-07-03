@@ -181,6 +181,40 @@ jupyter nbconvert --to notebook --execute notebooks/03_prediction_success_evalua
 jupyter nbconvert --to notebook --execute notebooks/04_rf_action_and_success_predictors.ipynb --output 04_rf_action_and_success_predictors.ipynb
 ```
 
+### PokerBench prompt SQL sandbox
+
+A queryable, cloud-shippable database of every natural-language
+"situation-stylized" prompt in the PokerBench preflop split. See
+[`reports/PROMPT_DB_CANVAS.md`](reports/PROMPT_DB_CANVAS.md) for the
+full walkthrough (ERD, table reference, 10 worked queries, cloud
+publish path). Quick start:
+
+```bash
+# 1) Local SQLite sandbox (builds in ~15 s, opens the sqlite3 REPL)
+bash scripts/spin_up_prompt_sandbox.sh
+
+# 2) Ad-hoc query (console entry point installed by `pip install -e .`)
+pokerbench-promptdb query \
+    "SELECT hero_pos, canonical_label, COUNT(*)
+       FROM situations GROUP BY 1,2 ORDER BY 1,2" \
+    --db-path data/pokerbench_prompts.sqlite
+
+# 3) Postgres sandbox (docker-compose: Postgres 16 + Adminer + loader)
+docker compose -f deploy/postgres-sandbox/docker-compose.yml up -d
+
+# 4) Publish to Hugging Face Datasets (SQLite + Parquet mirror)
+pokerbench-promptdb publish-hf <you>/pokerbench-prompt-db
+```
+
+Materialised from `RZ412/PokerBench` (60k train + 1k test):
+**64,200 situations · 283,750 prev-line actions · 138,331 available-move
+rows · 385,200 seat rows · 57 raw label variants → 4 canonical labels ·
+6 decision-type classes**. Every prompt slot (positions, blinds, hero
+holding, prev-line, pot size) is parsed into a normalised column, so
+queries like "what's the solver's mix on BTN with AKo?" or "which hand
+classes are most often facing an all-in?" are one-liner SQL. Full
+schema: [`poker_predictor/data/prompt_db.py`](poker_predictor/data/prompt_db.py).
+
 ### Consolidated metrics report
 
 Every quantitative result produced by the notebooks and scripts on this
