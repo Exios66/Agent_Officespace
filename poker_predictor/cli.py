@@ -23,6 +23,10 @@ app = typer.Typer(help="Preflop poker predictor CLI.")
 console = Console()
 log = logging.getLogger(__name__)
 
+from .selfplay.cli import app as selfplay_app
+
+app.add_typer(selfplay_app, name="selfplay", help="Self-play synthetic data generation.")
+
 
 @app.callback()
 def _main(verbose: bool = typer.Option(False, "--verbose", "-v")) -> None:

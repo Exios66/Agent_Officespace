@@ -233,6 +233,93 @@ It covers:
   table for automating decisions at target accuracy levels 95% / 97%
   / 98% / 99%.
 
+### Self-play synthetic data
+
+`poker_predictor/selfplay/` is a self-play data-generation pipeline that
+lets the LLM (or any other configured player) play No Limit Hold'em
+against itself and a roster of baseline opponents, emitting
+PokerBench-compatible ``{instruction, output, reward_bb}`` decision rows
+that plug directly back into the SFT track — the exponential-improvement
+loop.
+
+```mermaid
+flowchart LR
+  Base[Base LLM / Model] --> Roster[Player roster<br/>LLM · TAG · LAG · random · policy]
+  Roster --> Engine[NLHE engine<br/>preflop → river · side pots · showdown]
+  Engine --> Traj[Trajectory JSONL<br/>+ per-decision reward BB]
+  Traj -->|filter winners /<br/>showdown / advantage| SFT[TRL SFT messages JSONL]
+  SFT --> Train[SFT / DPO on HF Jobs]
+  Train --> Base
+```
+
+Layout:
+
+```
+poker_predictor/selfplay/
+  hand_eval.py   7-card evaluator (21-subset best-5 rank tuple)
+  engine.py     NLHEEngine (dealing, blinds, side pots, showdown)
+  prompts.py    PokerBench-style DecisionPrompt renderer + response parser
+  players.py    Player ABC + Random / Heuristic / TAG / LAG / LLM / PolicyModel
+  reward.py     Trajectory credit assignment + filters
+  runner.py     SelfPlayEngine, save_jsonl, run_generation_loop
+  cli.py        `poker-predictor selfplay {run,loop,demo,prepare-sft}`
+```
+
+Quick start (no model needed — heuristic-only baseline):
+
+```bash
+poker-predictor selfplay demo --num-hands 2 \
+    --roster "heuristic,tag,lag,random,heuristic,tag"
+
+poker-predictor selfplay run --num-hands 500 --num-seats 6 \
+    --roster "heuristic,tag,lag,random,heuristic,tag" \
+    --output data/selfplay/gen0_decisions.jsonl \
+    --sft-output data/selfplay/gen0_sft.jsonl \
+    --filter-winners
+```
+
+Iterative self-improvement loop (K generations):
+
+```bash
+poker-predictor selfplay loop --generations 3 --hands-per-generation 2000 \
+    --roster "heuristic,tag,lag,random,heuristic,tag" \
+    --output-dir data/selfplay/loop --filter-winners
+```
+
+To put your fine-tuned LLM in the seat, use the ``llm:<hf-id>`` or
+``llm_gguf:<path>`` roster tokens (also ``policy:<joblib-path>`` for the
+classical LightGBM model):
+
+```bash
+poker-predictor selfplay run --num-hands 1000 \
+    --roster "llm:my-user/pokerbench-preflop-sft,tag,lag,random,heuristic,tag" \
+    --sft-output data/selfplay/gen1_sft.jsonl --filter-winners
+```
+
+Feed the resulting ``gen{N}_sft.jsonl`` back into
+``poker_predictor/llm/train_sft_job.py`` (via HF Jobs) alongside
+PokerBench to train the next generation. Full API is exposed in
+``poker_predictor.selfplay``:
+
+```python
+from poker_predictor.selfplay import (
+    SelfPlayEngine, HeuristicPlayer, TightAggressivePlayer,
+    LooseAggressivePlayer, RandomPlayer, keep_winning_actions,
+    prepare_sft_from_trajectories,
+)
+
+engine = SelfPlayEngine(
+    players=[HeuristicPlayer(f"h{i}") for i in range(4)] + [TightAggressivePlayer("tag"), LooseAggressivePlayer("lag")],
+    num_seats=6, starting_stack_bb=100.0,
+)
+trajectories = engine.run(num_hands=1000, seed=0)
+rows = [row for t in trajectories for row in t.decisions_with_reward()]
+prepare_sft_from_trajectories(keep_winning_actions(rows), "data/selfplay/winners_sft.jsonl")
+```
+
+Chip-conservation and 2-9 seat variants are covered by regression tests
+in ``tests/test_selfplay_*.py``.
+
 ### Refinement roadmap
 
 Concrete extensions once we ingest richer data:
@@ -254,7 +341,10 @@ Concrete extensions once we ingest richer data:
   strongest bluff signals not present in solver datasets.
 - **Active learning / RL loop.** Use the supervised model as a policy prior
   and refine with CFR / self-play; use the fine-tuned LLM as a language-level
-  policy that can be distilled back into the classical model.
+  policy that can be distilled back into the classical model. The core
+  engine + trajectory recorder for this loop already lives in
+  [`poker_predictor/selfplay/`](poker_predictor/selfplay/) — see the
+  *Self-play synthetic data* section above.
 - **Data quality flags.** Dedup near-identical spots, split by stack-depth
   bucket, and enforce leak-free train/test partitions.
 
