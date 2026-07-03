@@ -181,6 +181,24 @@ jupyter nbconvert --to notebook --execute notebooks/03_prediction_success_evalua
 jupyter nbconvert --to notebook --execute notebooks/04_rf_action_and_success_predictors.ipynb --output 04_rf_action_and_success_predictors.ipynb
 ```
 
+### Consolidated metrics report
+
+Every quantitative result produced by the notebooks and scripts on this
+branch is consolidated in [`reports/METRICS_REPORT.md`](reports/METRICS_REPORT.md).
+It covers:
+
+- Multi-algorithm action leaderboards for both `poker_predictor/` (20k
+  train) and `poker/` (15.2k + 50.6k train).
+- Per-class precision / recall / F1 tables and confusion matrices.
+- Poker-domain metrics (`top1_accuracy`, `action_log_loss`,
+  `villain_fold_brier`, `bluff_ev_mean`, `bluff_positive_frac`).
+- Four Random Forest action variants (baseline / deep / balanced /
+  isotonic-calibrated).
+- Success-of-prediction meta-model results: ROC-AUC / PR-AUC / Brier
+  for each primary, coverage-vs-accuracy curves, and a trust-policy
+  table for automating decisions at target accuracy levels 95% / 97%
+  / 98% / 99%.
+
 ### Refinement roadmap
 
 Concrete extensions once we ingest richer data:
