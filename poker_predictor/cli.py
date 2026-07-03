@@ -27,6 +27,14 @@ from .selfplay.cli import app as selfplay_app
 
 app.add_typer(selfplay_app, name="selfplay", help="Self-play synthetic data generation.")
 
+from .llm.reasoning.cli import app as reason_app
+
+app.add_typer(
+    reason_app,
+    name="reason",
+    help="Augment PokerBench rows with labeler-authored reasoning traces.",
+)
+
 
 @app.callback()
 def _main(verbose: bool = typer.Option(False, "--verbose", "-v")) -> None:
