@@ -23,7 +23,7 @@ one owns.
 | [`features/`](features/) | Deterministic feature engineering: 169-class hand labels, preflop equity lookup, position / stack / action features, and the top-level `build_feature_matrix` + `canonical_action_label` used everywhere. |
 | [`models/`](models/) | The three model classes: the classical `MultiHeadModel` (LightGBM action head + villain-fold head), a torch MLP baseline, and the `SuccessPredictor` meta-model. |
 | [`training/`](training/) | Training loops (`train_classical`, `train_torch`), evaluation (`eval.py`), and the villain-fold label derivation. |
-| [`llm/`](llm/) | LLM SFT track: `prepare_sft.py` (PokerBench → chat JSONL), `train_sft_job.py` (PEP 723 UV script for HF Jobs), `infer.py` (transformers / llama.cpp wrapper). |
+| [`llm/`](llm/) | LLM SFT track: `prepare_sft.py` (PokerBench → chat JSONL), `train_sft_job.py` (PEP 723 UV script for HF Jobs), `infer.py` (transformers / llama.cpp wrapper), and `reasoning/` — the reasoning-trace augmentation subpackage (GPT-4o / GTO-solver / offline-template labelers, batch pipeline with checkpoint resume, `poker-predictor reason` CLI). |
 | [`selfplay/`](selfplay/) | Full NLHE engine, player roster (heuristic / TAG / LAG / random / LLM / classical policy), trajectory recorder with reward attribution, and PokerBench-compatible SFT export. |
 
 ## Public API at a glance

@@ -34,6 +34,7 @@ pip install -e '.[dev,torch,llm]'
 | [`test_selfplay_hand_eval.py`](test_selfplay_hand_eval.py) | [`poker_predictor.selfplay.hand_eval`](../poker_predictor/selfplay/hand_eval.py) — 7-card evaluator. |
 | [`test_selfplay_engine.py`](test_selfplay_engine.py) | [`poker_predictor.selfplay.engine`](../poker_predictor/selfplay/engine.py) — NLHE engine chip conservation and side-pot logic. |
 | [`test_selfplay_runner.py`](test_selfplay_runner.py) | [`poker_predictor.selfplay.runner`](../poker_predictor/selfplay/runner.py) — trajectory recording and SFT export. |
+| [`test_reasoning_labeler.py`](test_reasoning_labeler.py) | [`poker_predictor.llm.reasoning`](../poker_predictor/llm/reasoning/) — offline template labeler, injected-fake OpenAI + HTTP transports, decision-line normaliser, batch pipeline (JSONL output, checkpoint resume, fail-fast vs best-effort). |
 
 ## Adding a test
 

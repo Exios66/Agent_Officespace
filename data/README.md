@@ -9,6 +9,7 @@ committed reference artifacts and gitignored working directories.
 | Path | Description |
 |---|---|
 | [`pokerbench_prompts_parquet/`](pokerbench_prompts_parquet/) | Parquet mirror of the PokerBench prompt SQL DB (6 tables, ~9 MB total). See its [README](pokerbench_prompts_parquet/README.md). |
+| [`examples/`](examples/) | Hand-authored PokerBench prompts converted into reasoning-enriched SFT training rows (in both `concise` and `structured` output styles). Static reference for the [`poker_predictor.llm.reasoning`](../poker_predictor/llm/reasoning/) pipeline; not required at runtime. See its [README](examples/README.md). |
 
 ## Gitignored contents (regenerable)
 

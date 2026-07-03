@@ -13,6 +13,7 @@ Requires the `llm` extra: `pip install -e '.[llm]'`.
 | [`prepare_sft.py`](prepare_sft.py) | Converts the PokerBench `prompt_and_label.json` split into a `{"messages": [...]}` JSONL that TRL's `SFTTrainer(chat_template="auto")` consumes directly. Uses a preflop-strategist system prompt and a strict "no explanation" output constraint. |
 | [`train_sft_job.py`](train_sft_job.py) | **PEP 723 UV script** — self-contained fine-tuning entrypoint designed to be invoked via `hf jobs uv run`. Loads PokerBench directly (via `hf_hub_download`), wraps rows in the chat template, and runs `SFTTrainer` with LoRA (`q_proj/k_proj/v_proj/o_proj`, r=16, α=32). Pushes the adapter to a private Hub repo. Best-effort Trackio init for training curves. |
 | [`infer.py`](infer.py) | `load(model_id_or_path, backend)` returning a `PokerLLM` with an `act(instruction)` method. Two backends: `transformers` (`pipeline("text-generation")` for GPU) and `llama_cpp` (GGUF via `llama-cpp-python` for CPU / Metal). Both share a common regex-based action parser. |
+| [`reasoning/`](reasoning/) | Reasoning-trace augmentation subpackage. Turns raw PokerBench `{instruction, output}` rows into reasoning-enriched TRL messages by piping each row through a labeler (GPT-4o via OpenAI, a local GTO solver via HTTP, or an offline deterministic template). Installed as the `poker-predictor reason ...` CLI. See its [README](reasoning/README.md). |
 
 ## Prepare an SFT JSONL
 
@@ -55,6 +56,35 @@ Or GGUF via llama.cpp:
 ```python
 llm = load("/path/to/pokerbench-preflop-q4_k_m.gguf", backend="llama_cpp")
 ```
+
+## Reasoning-trace augmentation (distillation from GPT-4o / a GTO solver)
+
+The [`reasoning/`](reasoning/) subpackage turns each PokerBench row
+into a chain-of-thought row that a small student LLM can learn from:
+
+```bash
+# Offline smoke test (no external API needed)
+poker-predictor reason generate --source hub --split test \
+    --labeler template --output data/reasoning_sft_test.jsonl --limit 20
+
+# Full 60k GPT-4o labeling pass (OPENAI_API_KEY required)
+poker-predictor reason generate --source hub --split train \
+    --labeler openai --openai-model gpt-4o \
+    --output data/reasoning_sft_train.jsonl
+
+# Or point at a local GTO-solver HTTP wrapper
+poker-predictor reason generate --source hub --split train \
+    --labeler solver --solver-endpoint http://localhost:8080/label \
+    --output data/reasoning_sft_train.jsonl
+```
+
+The output JSONL is the same `{"messages": [...]}` shape as
+`prepare_sft.py`, so it plugs straight into `train_sft_job.py`. Full
+walkthrough (including the HTTP contract for wrapping PioSolver / GTO+
+/ MonkerSolver) lives in [`reasoning/README.md`](reasoning/README.md).
+
+Install: `pip install -e '.[reason]'` (or
+`pip install -r requirements/reason.txt`).
 
 ## Feeding the loop
 

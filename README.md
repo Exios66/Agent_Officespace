@@ -127,6 +127,50 @@ hf jobs uv run --flavor a10-large --secrets HF_TOKEN \
   --output-repo <hf-user>/pokerbench-preflop-sft
 ```
 
+#### Reasoning-trace augmentation (distillation from GPT-4o / a GTO solver)
+
+Fine-tuning a small LLM directly on `<prompt> -> <action>` leaves the
+student unable to generalise. The
+[`poker_predictor/llm/reasoning/`](poker_predictor/llm/reasoning/)
+subpackage runs each PokerBench row through a strong labeler (GPT-4o,
+a local GTO solver's HTTP wrapper, or an offline deterministic
+template) to insert a 4–8 sentence chain-of-thought between the user
+prompt and the final action:
+
+```bash
+# 20-row smoke test with the offline template labeler (no API needed)
+poker-predictor reason generate --source hub --split test \
+    --labeler template --output data/reasoning_sft_test.jsonl --limit 20
+
+# Full 60k GPT-4o labeling pass (OPENAI_API_KEY required)
+poker-predictor reason generate --source hub --split train \
+    --labeler openai --openai-model gpt-4o \
+    --output data/reasoning_sft_train.jsonl
+
+# Or point at a local PioSolver / GTO+ HTTP wrapper
+poker-predictor reason generate --source hub --split train \
+    --labeler solver --solver-endpoint http://localhost:8080/label \
+    --output data/reasoning_sft_train.jsonl
+```
+
+The output JSONL is the same `{"messages": [...]}` shape as
+`prepare_sft.py`, so it plugs straight into `train_sft_job.py`. Two
+output styles are supported: the default `concise` format (paragraph +
+`Decision: <action>` line) and a `structured` format that emits
+`### Strategic Analysis / ### Mathematical Calculations / ### Action`
+sections — pick with `--style structured` when you want per-section
+grading during RL / DPO. Fully worked hand-authored examples in both
+styles live in
+[`data/examples/reasoning_sft_examples.md`](data/examples/reasoning_sft_examples.md).
+
+The pipeline is checkpointed — a mid-run failure resumes without
+re-labeling completed rows, which matters when the labeler costs
+money per call. Install extras with `pip install -e '.[reason]'`
+(or `pip install -r requirements/reason.txt`). Full walkthrough,
+including the HTTP contract for wrapping the popular native
+solvers, is in
+[`poker_predictor/llm/reasoning/README.md`](poker_predictor/llm/reasoning/README.md).
+
 ### Evaluation
 
 `poker-predictor eval` reports on the 1k PokerBench preflop test split:
