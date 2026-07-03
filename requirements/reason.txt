@@ -1,0 +1,13 @@
+# Canonical stack: base + reasoning-trace labelers (OpenAI + Solver API).
+#
+# Mirror of the `reason` extra in ../pyproject.toml. Install with:
+#     pip install -r requirements/reason.txt
+#
+# Enables the OpenAI (GPT-4o) and HTTP-solver labeler backends used by
+# `poker-predictor reason generate` — see
+# ../poker_predictor/llm/reasoning/. The offline TemplateLabeler works
+# with only the base stack installed and does NOT require this file.
+-r base.txt
+
+openai>=1.40
+httpx>=0.27
