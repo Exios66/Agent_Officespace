@@ -55,5 +55,9 @@ pip install -e '.[dev,llm]'        # + transformers/trl/peft for LLM SFT
 pip install -e '.[dev,tracking]'   # + trackio experiment tracking
 ```
 
+Prefer `pip install -r`? Feature-layered mirrors of the extras live
+under [`../requirements/`](../requirements/) — see
+[`../requirements/README.md`](../requirements/README.md).
+
 See [`../CONTRIBUTING.md`](../CONTRIBUTING.md) for tests, lint, and PR
 conventions.

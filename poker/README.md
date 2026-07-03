@@ -70,8 +70,25 @@ poker/
 
 ### Installation
 
+Old default (installs the full stack — every training path, every
+notebook dependency, every tracker):
+
 ```bash
 pip install -r requirements.txt
+```
+
+Feature-tailored (recommended). Pick only what you need — full menu in
+[`requirements/README.md`](requirements/README.md):
+
+```bash
+pip install -r requirements/base.txt      # preprocess + features only
+pip install -r requirements/ml.txt        # + XGBoost / LightGBM
+pip install -r requirements/nn.txt        # + PyTorch MLP / LSTM
+pip install -r requirements/llm.txt       # + LoRA fine-tuning
+pip install -r requirements/viz.txt       # + matplotlib / seaborn / plotly
+pip install -r requirements/tracking.txt  # + wandb / tensorboard
+pip install -r requirements/dev.txt       # + jupyter / pytest / black
+pip install -r requirements/all.txt       # everything (same as requirements.txt)
 ```
 
 ### Download Data

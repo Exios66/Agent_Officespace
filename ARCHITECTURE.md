@@ -25,14 +25,24 @@ split — see section 2 of [`reports/METRICS_REPORT.md`](reports/METRICS_REPORT.
 
 - The canonical `poker_predictor` stack's dependencies live in
   [`pyproject.toml`](pyproject.toml). Optional extras: `torch`, `llm`,
-  `tracking`, `dev`.
-- The legacy `poker/` MVP has its own
-  [`poker/requirements.txt`](poker/requirements.txt) with lower-bound
-  pins plus a couple of upper bounds (see BUG_AUDIT items 2 and 4
-  for the transformers/torch regressions those upper bounds prevent).
-- Never install both into the same env without extras — they mostly
-  agree, but the legacy MVP's `treys` and `wandb` are not part of the
-  canonical stack.
+  `tracking`, `dev`. For users who prefer `pip install -r`,
+  [`requirements/`](requirements/) mirrors those extras as feature
+  layers (`base.txt`, `torch.txt`, `llm.txt`, `tracking.txt`,
+  `dev.txt`, `all.txt`) — see
+  [`requirements/README.md`](requirements/README.md).
+- The legacy `poker/` MVP has its own layered requirements under
+  [`poker/requirements/`](poker/requirements/) (`base.txt`, `ml.txt`,
+  `nn.txt`, `llm.txt`, `viz.txt`, `tracking.txt`, `poker.txt`,
+  `dev.txt`, `all.txt`). The top-level
+  [`poker/requirements.txt`](poker/requirements.txt) is retained as a
+  backwards-compatible passthrough that installs `all.txt`. See
+  [`poker/requirements/README.md`](poker/requirements/README.md).
+- Upper bounds `torch<3` and `transformers<5` guard against the two
+  major-release regressions documented in
+  [`poker/docs/BUG_AUDIT.md`](poker/docs/BUG_AUDIT.md) items 2 and 4.
+- Never install the canonical and legacy stacks into the same env
+  without extras — they mostly agree, but the legacy MVP's `treys` and
+  `wandb` are not part of the canonical stack.
 
 ## Top-level directory tree
 
@@ -67,6 +77,7 @@ split — see section 2 of [`reports/METRICS_REPORT.md`](reports/METRICS_REPORT.
 │   ├── data/                    # {raw, processed, models}/  (gitignored contents)
 │   ├── docs/                    # GETTING_STARTED, USAGE, ROADMAP, BUG_AUDIT
 │   ├── notebooks/               # 01_quickstart + 02_prediction_success_evaluation
+│   ├── requirements/            # Feature-layered dependency files (base/ml/nn/llm/…)
 │   ├── scripts/                 # download_data.py + run_pipeline.py
 │   ├── src/                     # data / features / models / evaluation / llm
 │   └── tests/                   # Regression tests for the MVP
@@ -76,6 +87,7 @@ split — see section 2 of [`reports/METRICS_REPORT.md`](reports/METRICS_REPORT.
 ├── scripts/                     # Repo-level helper scripts
 ├── deploy/                      # Deployment artifacts (Postgres sandbox)
 ├── data/                        # Committed parquet mirror + gitignored working dirs
+├── requirements/                # Feature-layered mirrors of pyproject extras
 └── tests/                       # Canonical pytest suite for poker_predictor/
 ```
 

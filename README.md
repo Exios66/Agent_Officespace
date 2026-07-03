@@ -70,11 +70,28 @@ tests/        parser + feature tests
 
 ### Install
 
+Editable install with `pyproject.toml` extras:
+
 ```bash
 pip install -e .            # base classical stack
 pip install -e '.[torch]'   # add PyTorch MLP baseline
 pip install -e '.[llm]'     # add transformers/trl/peft for the LLM track
 ```
+
+Or, if you prefer `pip install -r`, feature-layered mirrors of the
+extras live under [`requirements/`](requirements/):
+
+```bash
+pip install -r requirements/base.txt       # classical stack only
+pip install -r requirements/torch.txt      # + PyTorch MLP
+pip install -r requirements/llm.txt        # + LLM SFT track
+pip install -r requirements/tracking.txt   # + Trackio
+pip install -r requirements/dev.txt        # + pytest / ruff / mypy
+pip install -r requirements/all.txt        # everything
+```
+
+See [`requirements/README.md`](requirements/README.md) for the layer
+graph and per-use-case picks.
 
 ### Usage
 

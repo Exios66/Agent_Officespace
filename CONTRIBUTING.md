@@ -31,12 +31,22 @@ source .venv/bin/activate
 pip install -e '.[dev,torch,llm,tracking]'
 ```
 
-For the legacy `poker/` MVP, install its own `requirements.txt` (which
-purposely lives outside `pyproject.toml`):
+If you prefer plain `pip install -r`, feature-tailored requirements
+files that mirror the extras above live under
+[`requirements/`](requirements/) — pick the layer you need
+(`base.txt`, `torch.txt`, `llm.txt`, `tracking.txt`, `dev.txt`, or
+`all.txt`). See [`requirements/README.md`](requirements/README.md).
+
+For the legacy `poker/` MVP, either install everything the old way:
 
 ```bash
 pip install -r poker/requirements.txt
 ```
+
+…or pick a feature-tailored layer under
+[`poker/requirements/`](poker/requirements/) — `base.txt`, `ml.txt`,
+`nn.txt`, `llm.txt`, `viz.txt`, `tracking.txt`, `poker.txt`, `dev.txt`,
+or `all.txt`. See [`poker/requirements/README.md`](poker/requirements/README.md).
 
 ## Tests
 
