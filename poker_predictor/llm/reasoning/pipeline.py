@@ -24,7 +24,7 @@ from typing import Any
 
 from .labeler import LabelerError, ReasoningLabeler
 from .prompts import DEFAULT_SYSTEM_PROMPT
-from .schema import AugmentedRow, PokerBenchRow, ReasoningTrace
+from .schema import AugmentedRow, PokerBenchRow, PromptStyle, ReasoningTrace
 
 log = logging.getLogger(__name__)
 
@@ -158,10 +158,20 @@ def augment_row(
     row: PokerBenchRow,
     labeler: ReasoningLabeler,
     system_prompt: str = DEFAULT_SYSTEM_PROMPT,
+    style: PromptStyle | None = None,
 ) -> AugmentedRow:
-    """Label one row and package the result as an :class:`AugmentedRow`."""
+    """Label one row and package the result as an :class:`AugmentedRow`.
+
+    ``style`` defaults to ``labeler.style`` so callers rarely need to
+    override it explicitly.
+    """
     trace: ReasoningTrace = labeler.label(row)
-    return AugmentedRow(source=row, trace=trace, system_prompt=system_prompt)
+    return AugmentedRow(
+        source=row,
+        trace=trace,
+        system_prompt=system_prompt,
+        style=style or getattr(labeler, "style", "concise"),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -206,7 +216,9 @@ def run_augment(
                 continue
 
             try:
-                aug = augment_row(row, labeler, system_prompt=config.system_prompt)
+                aug = augment_row(
+                    row, labeler, system_prompt=config.system_prompt
+                )
             except LabelerError as e:
                 log.error("Labeler failed for row_id=%s: %s", row.row_id, e)
                 result.n_failed += 1

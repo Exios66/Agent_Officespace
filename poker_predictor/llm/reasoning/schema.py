@@ -1,9 +1,11 @@
 """Pydantic schemas for reasoning-trace augmentation."""
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
+
+PromptStyle = Literal["concise", "structured"]
 
 
 class PokerBenchRow(BaseModel):
@@ -63,11 +65,20 @@ class AugmentedRow(BaseModel):
     source: PokerBenchRow
     trace: ReasoningTrace
     system_prompt: str = Field(...)
+    style: PromptStyle = Field(default="concise")
 
     def student_assistant_content(self) -> str:
-        """Format the assistant turn as ``<reasoning>\\nDecision: <action>``."""
+        """Format the assistant turn according to :attr:`style`.
+
+        - ``"concise"``: ``<reasoning>\\nDecision: <action>``.
+        - ``"structured"``: the trace's ``reasoning`` is expected to
+          already be a full ``### Strategic Analysis / ### Mathematical
+          Calculations / ### Action`` block, so it is emitted verbatim.
+        """
         reasoning = self.trace.reasoning.strip()
         action = self.trace.action.strip()
+        if self.style == "structured":
+            return reasoning
         return f"{reasoning}\nDecision: {action}"
 
     def to_messages(self) -> dict[str, Any]:
@@ -83,6 +94,7 @@ class AugmentedRow(BaseModel):
                 "labeler_model": self.trace.labeler_model,
                 "gold_action": self.source.output,
                 "predicted_action": self.trace.action,
+                "style": self.style,
                 "tokens_prompt": self.trace.tokens_prompt,
                 "tokens_completion": self.trace.tokens_completion,
                 "latency_ms": self.trace.latency_ms,

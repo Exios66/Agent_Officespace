@@ -29,8 +29,10 @@ from typing import Any
 from .prompts import (
     REASONING_LABELER_SYSTEM_PROMPT,
     build_labeler_user_prompt,
+    build_structured_assistant_response,
+    labeler_system_prompt_for_style,
 )
-from .schema import PokerBenchRow, ReasoningTrace
+from .schema import PokerBenchRow, PromptStyle, ReasoningTrace
 
 log = logging.getLogger(__name__)
 
@@ -49,6 +51,9 @@ class ReasoningLabeler(ABC):
 
     #: Short identifier persisted in the augmented row metadata.
     name: str = "abstract"
+
+    #: Prompt style this labeler emits. Overridden in concrete impls.
+    style: PromptStyle = "concise"
 
     @abstractmethod
     def label(self, row: PokerBenchRow) -> ReasoningTrace:
@@ -71,6 +76,25 @@ class ReasoningLabeler(ABC):
         last = m[-1]
         return f"{stripped[: last.start()].rstrip()}\n{gold_line}"
 
+    def _enforce_structured_action(self, text: str, gold_action: str) -> str:
+        """Guarantee a structured trace ends with a canonical ``### Action`` block."""
+        from .prompts import _canonical_action_line
+
+        canonical = _canonical_action_line(gold_action)
+        stripped = text.rstrip()
+        # Locate the last '### Action' header (case-insensitive).
+        m = list(re.finditer(r"(?im)^\s*#{2,4}\s*action\s*$", stripped))
+        if not m:
+            return f"{stripped}\n\n### Action\n{canonical}"
+        last = m[-1]
+        return f"{stripped[: last.end()].rstrip()}\n{canonical}"
+
+    def _enforce_tail(self, text: str, gold_action: str) -> str:
+        """Dispatch to the right normaliser for :attr:`style`."""
+        if self.style == "structured":
+            return self._enforce_structured_action(text, gold_action)
+        return self._enforce_decision_line(text, gold_action)
+
 
 # ---------------------------------------------------------------------------
 # Template (offline)
@@ -81,24 +105,28 @@ class ReasoningLabeler(ABC):
 class TemplateLabeler(ReasoningLabeler):
     """Deterministic, offline heuristic labeler.
 
-    Parses the PokerBench instruction with the same tools the
-    canonical feature pipeline uses (``PreflopSample`` +
-    ``parse_prev_line``) and composes a rule-based paragraph. Zero
-    external dependencies. Not as expressive as a GPT-4o trace, but
-    fully reproducible and safe to run in CI.
+    Parses the PokerBench instruction and composes a rule-based
+    paragraph (``style="concise"``) or section-tagged walkthrough
+    (``style="structured"``). Zero external dependencies. Not as
+    expressive as a GPT-4o trace, but fully reproducible and safe to
+    run in CI.
     """
 
     name: str = "template"
+    style: PromptStyle = "concise"
 
     def label(self, row: PokerBenchRow) -> ReasoningTrace:
         t0 = time.perf_counter()
-        reasoning = _build_template_reasoning(row.instruction, row.output)
+        if self.style == "structured":
+            reasoning = _build_template_structured(row.instruction, row.output)
+        else:
+            reasoning = _build_template_reasoning(row.instruction, row.output)
         latency_ms = (time.perf_counter() - t0) * 1000.0
         return ReasoningTrace(
             reasoning=reasoning,
             action=row.output.strip(),
             labeler=self.name,
-            labeler_model="template-v1",
+            labeler_model=f"template-v1:{self.style}",
             latency_ms=latency_ms,
         )
 
@@ -180,6 +208,119 @@ def _search(pattern: str, text: str, flags: int = 0) -> str | None:
     return m.group(1) if m else None
 
 
+def _build_template_structured(instruction: str, gold_action: str) -> str:
+    """Section-tagged (### Strategic Analysis / ### Mathematical
+    Calculations / ### Action) template.
+
+    Uses the same lightweight regex features as :func:`_build_template_reasoning`
+    plus the pot / stack numbers pulled from the prompt to fill the
+    'Mathematical Calculations' block.
+    """
+    hero_pos = _search(r"\bposition\s*[:=]\s*([A-Za-z]+)", instruction) or _search(
+        r"\b(UTG|HJ|CO|BTN|SB|BB)\b", instruction
+    )
+    hole = _search(r"\b([2-9TJQKA][shdc][2-9TJQKA][shdc])\b", instruction)
+    stack = _search(r"stack[^0-9]*([0-9]+(?:\.[0-9]+)?)\s*bb", instruction, flags=re.I)
+    pot = _search(r"pot[^0-9]*([0-9]+(?:\.[0-9]+)?)\s*bb", instruction, flags=re.I)
+    bet_to_call = _search(
+        r"(?:bets?|raises?\s+to|to)\s+([0-9]+(?:\.[0-9]+)?)\s*BB", instruction
+    )
+
+    verb = gold_action.strip().split()[0].lower() if gold_action.strip() else "check"
+
+    analysis_bits: list[str] = []
+    idx = 1
+    if hero_pos or hole:
+        who = ", ".join(
+            b for b in [f"in {hero_pos.upper()}" if hero_pos else "", f"holding {hole}" if hole else ""] if b
+        )
+        analysis_bits.append(f"{idx}. **Hero snapshot**: Hero is {who}.")
+        idx += 1
+    if re.search(r"3[- ]?bet|reraise", instruction, re.I):
+        analysis_bits.append(
+            f"{idx}. **Range vs Range**: Facing a 3-bet the pot is inflated and villain's range is tight."
+        )
+        idx += 1
+    elif re.search(r"\ball[- ]?in\b|jam|shove", instruction, re.I):
+        analysis_bits.append(
+            f"{idx}. **Facing all-in**: This is a pot-odds vs equity decision — no future streets."
+        )
+        idx += 1
+    else:
+        analysis_bits.append(
+            f"{idx}. **Range vs Range**: Standard range asymmetry for this position and prior action."
+        )
+        idx += 1
+    if verb in {"fold"}:
+        analysis_bits.append(
+            f"{idx}. **Hand strength**: Hero's holding is dominated by villain's continuing range."
+        )
+        idx += 1
+        analysis_bits.append(
+            f"{idx}. **GTO strategy**: Folding is the maximum-EV line; calling burns chips."
+        )
+    elif verb in {"call"}:
+        analysis_bits.append(
+            f"{idx}. **Hand strength**: Hero has enough equity to continue given position and stack depth."
+        )
+        idx += 1
+        analysis_bits.append(
+            f"{idx}. **GTO strategy**: Call to realise equity; 3-betting over-inflates the pot with a marginal hand."
+        )
+    elif verb in {"check"}:
+        analysis_bits.append(
+            f"{idx}. **Hand strength**: Medium — checking realises equity cheaply and keeps villain's range wide."
+        )
+        idx += 1
+        analysis_bits.append(
+            f"{idx}. **GTO strategy**: Check to induce bluffs and control pot size."
+        )
+    elif verb in {"raise", "bet"}:
+        analysis_bits.append(
+            f"{idx}. **Hand strength**: Strong equity + playability; the hand prefers a bigger pot."
+        )
+        idx += 1
+        analysis_bits.append(
+            f"{idx}. **GTO strategy**: Bet / raise for value and to deny equity to villain's marginal continues."
+        )
+    elif verb in {"allin"}:
+        analysis_bits.append(
+            f"{idx}. **Hand strength**: Enough equity to get stacks in; fold equity is a bonus."
+        )
+        idx += 1
+        analysis_bits.append(
+            f"{idx}. **GTO strategy**: Jam to maximise fold equity while flipping or dominating villain's call range."
+        )
+    analysis = "\n".join(analysis_bits)
+
+    math_bits: list[str] = []
+    if pot:
+        math_bits.append(f"* Pot size: {pot} BB")
+    if bet_to_call:
+        math_bits.append(f"* Bet to call: {bet_to_call} BB")
+        if pot:
+            try:
+                p = float(pot)
+                b = float(bet_to_call)
+                odds = b / (p + b)
+                math_bits.append(f"* Required equity: {odds * 100:.1f}%")
+            except ValueError:  # pragma: no cover
+                pass
+    if stack and pot:
+        try:
+            spr = float(stack) / float(pot)
+            math_bits.append(f"* SPR: {spr:.2f}")
+        except ValueError:  # pragma: no cover
+            pass
+    if stack:
+        math_bits.append(f"* Effective stack: {stack} BB")
+    if not math_bits:
+        math_bits.append("* (No explicit stack / pot numbers were parsed from the prompt.)")
+    math = "\n".join(math_bits)
+
+    return build_structured_assistant_response(analysis, math, gold_action)
+
+
 # ---------------------------------------------------------------------------
 # OpenAI (GPT-4o etc.)
 # ---------------------------------------------------------------------------
@@ -206,6 +347,7 @@ class OpenAILabeler(ReasoningLabeler):
     retry_base_delay_s: float = 2.0
     client: Any | None = None
     name: str = "openai"
+    style: PromptStyle = "concise"
 
     def __post_init__(self) -> None:
         if self.client is not None:
@@ -228,7 +370,7 @@ class OpenAILabeler(ReasoningLabeler):
 
     def label(self, row: PokerBenchRow) -> ReasoningTrace:
         messages = [
-            {"role": "system", "content": REASONING_LABELER_SYSTEM_PROMPT},
+            {"role": "system", "content": labeler_system_prompt_for_style(self.style)},
             {"role": "user", "content": build_labeler_user_prompt(row.instruction, row.output)},
         ]
 
@@ -245,7 +387,7 @@ class OpenAILabeler(ReasoningLabeler):
                 latency_ms = (time.perf_counter() - t0) * 1000.0
                 text = _extract_openai_text(resp)
                 usage = _extract_openai_usage(resp)
-                reasoning = self._enforce_decision_line(text, row.output)
+                reasoning = self._enforce_tail(text, row.output)
                 return ReasoningTrace(
                     reasoning=reasoning,
                     action=row.output.strip(),
@@ -347,6 +489,7 @@ class SolverAPILabeler(ReasoningLabeler):
     headers: dict[str, str] | None = None
     client: Any | None = None
     name: str = "solver_api"
+    style: PromptStyle = "concise"
 
     def __post_init__(self) -> None:
         if self.client is not None:
@@ -364,7 +507,8 @@ class SolverAPILabeler(ReasoningLabeler):
         payload = {
             "instruction": row.instruction,
             "gold_action": row.output,
-            "system_prompt": REASONING_LABELER_SYSTEM_PROMPT,
+            "system_prompt": labeler_system_prompt_for_style(self.style),
+            "style": self.style,
         }
         last_err: Exception | None = None
         for attempt in range(self.max_retries):
@@ -377,7 +521,7 @@ class SolverAPILabeler(ReasoningLabeler):
                 body = resp.json() if hasattr(resp, "json") else resp  # type: ignore[assignment]
                 reasoning = str(body.get("reasoning", "")).strip()
                 action = str(body.get("action") or row.output).strip()
-                reasoning = self._enforce_decision_line(reasoning, row.output)
+                reasoning = self._enforce_tail(reasoning, row.output)
                 return ReasoningTrace(
                     reasoning=reasoning,
                     action=action,

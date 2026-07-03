@@ -27,6 +27,27 @@ Training a small LLM on the augmented rows distils the labeler's
 reasoning into a cheap student model — the same recipe used by
 Orca-2, WizardLM, and other reasoning-distillation projects.
 
+## Output styles
+
+Two interchangeable output formats are supported — pick whichever
+matches your student model's context budget and downstream grading
+pipeline:
+
+| Style | Assistant turn shape | When to use |
+|---|---|---|
+| `concise` (default) | 4–8 sentence paragraph + `Decision: <action>` line. | Small (≤3B) student LLMs; distillation runs where context is precious. |
+| `structured` | `### Strategic Analysis` numbered list + `### Mathematical Calculations` bullet list + `### Action` line. | Larger students; workflows that need per-section grading during RL / DPO or programmatic parsing of the analysis / math / action separately. |
+
+Switch styles with `--style structured` on the CLI, or
+`labeler.style = "structured"` in the Python API.
+
+Fully-worked hand-authored examples in both styles live at
+[`../../../data/examples/reasoning_sft_examples.md`](../../../data/examples/reasoning_sft_examples.md)
+with matching JSONL training rows at
+[`reasoning_sft_examples.concise.jsonl`](../../../data/examples/reasoning_sft_examples.concise.jsonl)
+and
+[`reasoning_sft_examples.structured.jsonl`](../../../data/examples/reasoning_sft_examples.structured.jsonl).
+
 ## Backends
 
 Three interchangeable labelers implementing the same `ReasoningLabeler`
@@ -96,6 +117,12 @@ poker-predictor reason generate \
 
 # 4) Peek at the produced rows
 poker-predictor reason inspect data/reasoning_sft_test.jsonl --n 2
+
+# 5) Same, but structured (### Strategic Analysis / ### Math / ### Action)
+poker-predictor reason generate \
+    --source hub --split train \
+    --labeler openai --style structured \
+    --output data/reasoning_sft_train.structured.jsonl
 ```
 
 `--source` accepts three shapes:

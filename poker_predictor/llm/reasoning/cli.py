@@ -30,7 +30,7 @@ from .pipeline import (
     iter_pokerbench_jsonl,
     run_augment,
 )
-from .prompts import DEFAULT_SYSTEM_PROMPT
+from .prompts import DEFAULT_SYSTEM_PROMPT, system_prompt_for_style
 
 app = typer.Typer(help="Reasoning-trace augmentation for PokerBench SFT data.")
 console = Console()
@@ -43,16 +43,24 @@ def _make_labeler(
     openai_base_url: Optional[str],
     solver_endpoint: str,
     temperature: float,
+    style: str,
 ) -> ReasoningLabeler:
     kind = kind.lower()
+    if style not in {"concise", "structured"}:
+        raise typer.BadParameter(
+            f"unknown style {style!r}; expected concise|structured"
+        )
     if kind == "template":
-        return TemplateLabeler()
+        return TemplateLabeler(style=style)  # type: ignore[arg-type]
     if kind == "openai":
         return OpenAILabeler(
-            model=openai_model, temperature=temperature, base_url=openai_base_url
+            model=openai_model,
+            temperature=temperature,
+            base_url=openai_base_url,
+            style=style,  # type: ignore[arg-type]
         )
     if kind == "solver":
-        return SolverAPILabeler(endpoint=solver_endpoint)
+        return SolverAPILabeler(endpoint=solver_endpoint, style=style)  # type: ignore[arg-type]
     raise typer.BadParameter(f"unknown labeler {kind!r}; expected template|openai|solver")
 
 
@@ -80,7 +88,23 @@ def generate(
     no_resume: bool = typer.Option(False, help="Ignore any existing checkpoint file."),
     fail_fast: bool = typer.Option(False, help="Raise on the first labeler failure."),
     log_every: int = typer.Option(25, help="Log progress every N rows."),
-    system_prompt: str = typer.Option(DEFAULT_SYSTEM_PROMPT, help="Student system prompt."),
+    style: str = typer.Option(
+        "concise",
+        help=(
+            "Output format for the assistant turn. 'concise' emits a "
+            "paragraph + 'Decision: <action>' line. 'structured' emits "
+            "'### Strategic Analysis / ### Mathematical Calculations / "
+            "### Action' sections."
+        ),
+    ),
+    system_prompt: Optional[str] = typer.Option(
+        None,
+        help=(
+            "Student system prompt. Defaults to the style-appropriate "
+            "template (DEFAULT_SYSTEM_PROMPT for concise, "
+            "STRUCTURED_STUDENT_SYSTEM_PROMPT for structured)."
+        ),
+    ),
 ) -> None:
     """Read PokerBench rows and emit reasoning-augmented SFT JSONL."""
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
@@ -102,10 +126,12 @@ def generate(
         openai_base_url=openai_base_url,
         solver_endpoint=solver_endpoint,
         temperature=temperature,
+        style=style,
     )
+    effective_system_prompt = system_prompt or system_prompt_for_style(style)  # type: ignore[arg-type]
     cfg = AugmentRunConfig(
         output_path=output,
-        system_prompt=system_prompt,
+        system_prompt=effective_system_prompt,
         limit=limit,
         resume=not no_resume,
         fail_fast=fail_fast,

@@ -68,6 +68,49 @@ def test_template_labeler_mentions_position_and_hand() -> None:
     assert "AhKs" in trace.reasoning
 
 
+def test_template_labeler_structured_style_emits_all_three_sections() -> None:
+    trace = TemplateLabeler(style="structured").label(_row("raise 8.0bb"))
+    body = trace.reasoning
+    assert "### Strategic Analysis" in body
+    assert "### Mathematical Calculations" in body
+    assert body.strip().splitlines()[-1] == "RAISE 8.0 BB"
+    # Structured traces never include a bare 'Decision:' line — that's
+    # the concise style's convention.
+    assert "Decision:" not in body
+
+
+def test_structured_augmented_row_serialises_without_decision_line() -> None:
+    from poker_predictor.llm.reasoning import augment_row
+
+    aug = augment_row(_row("call"), TemplateLabeler(style="structured"))
+    msg = aug.to_messages()
+    assistant = msg["messages"][2]["content"]
+    assert msg["metadata"]["style"] == "structured"
+    assert "### Action" in assistant
+    assert "Decision:" not in assistant
+
+
+def test_openai_labeler_structured_enforces_action_block() -> None:
+    fake = _FakeCompletions(
+        texts=[
+            "### Strategic Analysis\n1. things.\n\n"
+            "### Mathematical Calculations\n* pot: 3 BB\n\n"
+            "### Action\nRAISE 6.0 BB"  # wrong; gold is 'fold'
+        ],
+    )
+    lb = OpenAILabeler(
+        client=_FakeOpenAIClient(fake),
+        max_retries=1,
+        retry_base_delay_s=0.0,
+        style="structured",
+    )
+    trace = lb.label(_row("fold"))
+    body = trace.reasoning
+    assert body.strip().splitlines()[-1] == "FOLD"
+    assert "RAISE 6.0 BB" not in body
+    assert "Decision:" not in body
+
+
 # ---------------------------------------------------------------------------
 # OpenAILabeler with injected fake client
 # ---------------------------------------------------------------------------

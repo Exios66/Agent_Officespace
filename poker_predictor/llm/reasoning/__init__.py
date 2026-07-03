@@ -52,10 +52,15 @@ from .pipeline import (
 from .prompts import (
     DEFAULT_SYSTEM_PROMPT,
     REASONING_LABELER_SYSTEM_PROMPT,
+    STRUCTURED_LABELER_SYSTEM_PROMPT,
+    STRUCTURED_STUDENT_SYSTEM_PROMPT,
     build_labeler_user_prompt,
+    build_structured_assistant_response,
     build_student_assistant_response,
+    labeler_system_prompt_for_style,
+    system_prompt_for_style,
 )
-from .schema import AugmentedRow, PokerBenchRow, ReasoningTrace
+from .schema import AugmentedRow, PokerBenchRow, PromptStyle, ReasoningTrace
 
 __all__ = [
     "AugmentRunConfig",
@@ -65,13 +70,19 @@ __all__ = [
     "LabelerError",
     "OpenAILabeler",
     "PokerBenchRow",
+    "PromptStyle",
     "REASONING_LABELER_SYSTEM_PROMPT",
     "ReasoningLabeler",
     "ReasoningTrace",
+    "STRUCTURED_LABELER_SYSTEM_PROMPT",
+    "STRUCTURED_STUDENT_SYSTEM_PROMPT",
     "SolverAPILabeler",
     "TemplateLabeler",
     "augment_row",
     "build_labeler_user_prompt",
+    "build_structured_assistant_response",
     "build_student_assistant_response",
+    "labeler_system_prompt_for_style",
     "run_augment",
+    "system_prompt_for_style",
 ]
