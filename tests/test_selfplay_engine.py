@@ -145,3 +145,51 @@ def test_seat_snapshot_hides_nothing_and_serialises():
     holes = [s["hole"] for s in snap["seats"]]
     assert all(len(h) == 4 for h in holes)
     assert len(set(holes)) == 4
+
+
+def test_nine_max_position_order():
+    eng = NLHEEngine(num_seats=9)
+    assert eng.position_order == [
+        "UTG",
+        "UTG+1",
+        "MP",
+        "LJ",
+        "HJ",
+        "CO",
+        "BTN",
+        "SB",
+        "BB",
+    ]
+    eng.reset(seed=0, button_idx=3)
+    assert eng.seats[3].position == "BTN"
+    assert {s.position for s in eng.seats} == set(eng.position_order)
+
+
+def _patch_stacks(eng: NLHEEngine, stacks: tuple[float, ...]) -> None:
+    for seat, target in zip(eng.seats, stacks, strict=True):
+        posted = seat.total_contributed
+        seat.stack_bb = max(0.0, target - posted)
+
+
+def test_side_pot_showdown_conserves_chips():
+    """Unequal stacks must split into tiered pots without chip leakage."""
+    stacks = (8.0, 20.0, 50.0)
+    eng = NLHEEngine(num_seats=3, starting_stack_bb=max(stacks))
+    eng.reset(seed=0, button_idx=0)
+    _patch_stacks(eng, stacks)
+
+    while not eng.terminal:
+        legal = eng.legal_actions()
+        if "allin" in legal and eng.actor.stack_bb <= min(stacks) + 5:
+            eng.apply_action("allin")
+        elif "call" in legal:
+            eng.apply_action("call")
+        elif "check" in legal:
+            eng.apply_action("check")
+        else:
+            eng.apply_action("fold")
+
+    assert eng.result is not None
+    assert eng.result.showdown
+    assert len(eng.result.pots) >= 2
+    assert abs(sum(eng.result.net_deltas_bb.values())) < 1e-9
