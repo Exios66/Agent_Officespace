@@ -10,8 +10,21 @@ cd poker
 ```
 
 2. **Install dependencies**:
+
+The old default installs the full stack:
+
 ```bash
 pip install -r requirements.txt
+```
+
+Or pick a feature-tailored layer (see
+[`../requirements/README.md`](../requirements/README.md) for the full
+menu):
+
+```bash
+pip install -r requirements/ml.txt   # XGBoost / LightGBM path
+pip install -r requirements/nn.txt   # PyTorch MLP / LSTM path
+pip install -r requirements/llm.txt  # LoRA fine-tuning path
 ```
 
 ## Quick Start

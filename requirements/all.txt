@@ -1,0 +1,11 @@
+# Canonical stack: everything.
+#
+# Equivalent to `pip install -e '.[torch,llm,tracking,dev]'`. Install with:
+#     pip install -r requirements/all.txt
+#
+# Use this when you want to run every notebook, every test, and every
+# training path (classical + torch MLP + LLM SFT).
+-r torch.txt
+-r llm.txt
+-r tracking.txt
+-r dev.txt

@@ -1,0 +1,17 @@
+# Canonical stack: base + LLM SFT track.
+#
+# Mirror of the `llm` extra in ../pyproject.toml. Install with:
+#     pip install -r requirements/llm.txt
+#
+# Adds transformers/trl/peft/accelerate so
+# `poker_predictor.llm.prepare_sft`, `poker_predictor.llm.train_sft_job`,
+# and `poker_predictor.llm.infer` all work. Includes PyTorch via
+# torch.txt.
+-r torch.txt
+
+# Upper bound: modern transformers renamed evaluation_strategy ->
+# eval_strategy — see poker/docs/BUG_AUDIT.md item 4.
+transformers>=4.44,<5.0
+trl>=0.11
+peft>=0.12
+accelerate>=0.34

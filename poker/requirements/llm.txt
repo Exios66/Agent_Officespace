@@ -1,0 +1,21 @@
+# Legacy MVP: LLM fine-tuning track.
+#
+# Install with:
+#     pip install -r poker/requirements/llm.txt
+#
+# Adds transformers + PEFT + accelerate on top of the neural stack so
+# `src/llm/train_llm.py` can fine-tune Mistral/Llama/Mixtral/Gemma with
+# LoRA. Includes PyTorch transitively via nn.txt.
+-r nn.txt
+
+# Upper bound: modern transformers renamed evaluation_strategy ->
+# eval_strategy — see docs/BUG_AUDIT.md item 4.
+transformers>=4.30.0,<5.0.0
+accelerate>=0.20.0
+peft>=0.4.0
+
+# bitsandbytes is optional and only used when the 8-bit code path is
+# hit. It is intentionally omitted here because it fails to install on
+# CPU-only / Mac boxes (see docs/BUG_AUDIT.md item 5). Install it
+# manually on Linux+CUDA if you want 8-bit LoRA:
+#     pip install bitsandbytes

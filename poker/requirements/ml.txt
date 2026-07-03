@@ -1,0 +1,12 @@
+# Legacy MVP: classical ML training path.
+#
+# Install with:
+#     pip install -r poker/requirements/ml.txt
+#
+# Adds XGBoost + LightGBM so `src/models/train_ml.py` (and
+# scripts/run_pipeline.py --model-type {xgboost,lightgbm,random_forest})
+# can train the gradient-boosted / random-forest classifiers.
+-r base.txt
+
+xgboost>=2.0.0
+lightgbm>=4.0.0

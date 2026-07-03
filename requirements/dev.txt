@@ -1,0 +1,12 @@
+# Canonical stack: base + developer tooling.
+#
+# Mirror of the `dev` extra in ../pyproject.toml. Install with:
+#     pip install -r requirements/dev.txt
+#
+# Adds pytest, ruff, and mypy — everything needed to run the canonical
+# test suite (`pytest -q`) and lint the code (`ruff check .`).
+-r base.txt
+
+pytest>=8.3
+ruff>=0.6
+mypy>=1.11

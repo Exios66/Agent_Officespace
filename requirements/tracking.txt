@@ -1,0 +1,11 @@
+# Canonical stack: base + experiment tracking (Trackio).
+#
+# Mirror of the `tracking` extra in ../pyproject.toml. Install with:
+#     pip install -r requirements/tracking.txt
+#
+# Enables the best-effort trackio.init() calls in
+# `poker_predictor.training.train_classical` and
+# `poker_predictor.llm.train_sft_job`.
+-r base.txt
+
+trackio>=0.0.6

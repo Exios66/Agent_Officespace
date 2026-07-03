@@ -1,0 +1,14 @@
+# Legacy MVP: optional poker-specific libraries.
+#
+# Install with:
+#     pip install -r poker/requirements/poker.txt
+#
+# `treys` is a fast Python poker hand-evaluation library. The current
+# `poker/` codebase does not import it (feature engineering uses a
+# hand-coded Sklansky-style table — see docs/BUG_AUDIT.md item B), but
+# it is listed here for parity with the old monolithic
+# requirements.txt and for any downstream code that wants a proper
+# evaluator.
+-r base.txt
+
+treys>=0.1.8

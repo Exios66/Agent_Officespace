@@ -1,0 +1,12 @@
+# Legacy MVP: experiment tracking.
+#
+# Install with:
+#     pip install -r poker/requirements/tracking.txt
+#
+# Adds wandb (Weights & Biases) and TensorBoard for the training loops
+# in `src/models/train_nn.py` and `src/llm/train_llm.py`. Both are
+# opt-in — the trainers no-op if these packages are missing.
+-r base.txt
+
+wandb>=0.15.0
+tensorboard>=2.13.0
