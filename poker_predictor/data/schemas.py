@@ -73,7 +73,16 @@ class PreflopSample(BaseModel):
         ..., min_length=4, max_length=4, description="Two cards concatenated, e.g. 'AhKs'."
     )
     hero_stack_bb: float = Field(default=100.0, ge=0.0)
-    num_players: int = Field(..., ge=2, le=9)
+    num_players: int = Field(
+        ...,
+        ge=1,
+        le=9,
+        description=(
+            "Players still in the pot at the decision point. PokerBench "
+            "includes some rows with num_players=1 (heads-up spots after "
+            "everyone else folded), so the lower bound is 1 rather than 2."
+        ),
+    )
     pot_bb: float = Field(..., ge=0.0)
     num_bets: int = Field(default=0, ge=0)
 
