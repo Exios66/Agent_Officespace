@@ -5,6 +5,7 @@ A comprehensive poker prediction system for No-Limit Texas Hold'em, focusing on 
 ## Project Overview
 
 This project aims to build predictive models for poker decision-making using:
+
 - **Traditional ML approaches**: Random Forests, XGBoost, Neural Networks
 - **Deep Learning**: Custom architectures for poker state representation
 - **LLM Fine-tuning**: Transformer-based models trained on poker scenarios
@@ -34,14 +35,16 @@ This project aims to build predictive models for poker decision-making using:
 ## Data Sources
 
 ### Primary Dataset: PokerBench
+
 - **Source**: [RZ412/PokerBench](https://huggingface.co/datasets/RZ412/PokerBench)
-- **Size**: 
+- **Size**:
   - Preflop: 60k training samples, 1k test samples
   - Postflop: 500k training samples, 10k test samples
 - **Format**: JSON (prompts + labels) and CSV (structured game data)
 - **Quality**: Solver-generated optimal decisions (GTO play)
 
 ### Secondary Dataset: Poker Transformers
+
 - **Source**: [SoelMgd/Poker_Transformers](https://github.com/SoelMgd/Poker_Transformers)
 - **Focus**: LLM training for poker scenarios
 
