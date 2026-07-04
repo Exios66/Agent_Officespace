@@ -266,4 +266,34 @@ def prepare_sft(
     console.print(f"[green]Wrote[/green] {n} SFT rows to {output_path}")
 
 
+@app.command()
+def iterate(
+    generations: int = typer.Option(3, help="Number of self-play + retrain generations."),
+    hands_per_gen: int = typer.Option(10000, help="Hands to play per generation."),
+    base_model: Path = typer.Option(
+        Path("artifacts/classical/multihead.joblib"), help="Starting model."
+    ),
+    model_kind: str = typer.Option("lightgbm", help="Model kind for retraining."),
+    output_dir: Path = typer.Option(Path("artifacts/selfplay_loop")),
+    seed: int = typer.Option(42),
+) -> None:
+    """Run the iterative self-play improvement loop (gen -> filter -> retrain -> eval)."""
+    from .retrain_loop import run_iterative_loop
+
+    results = run_iterative_loop(
+        num_generations=generations,
+        hands_per_gen=hands_per_gen,
+        base_model_path=str(base_model),
+        output_dir=output_dir,
+        model_kind=model_kind,
+        seed=seed,
+    )
+    tbl = Table("gen", "synthetic_rows", "accuracy", "log_loss")
+    for r in results:
+        tbl.add_row(str(r.generation), str(r.n_synthetic_rows),
+                    f"{r.test_accuracy:.4f}", f"{r.test_log_loss:.5f}")
+    console.print(tbl)
+    console.print(f"[green]Loop complete![/green] Models saved to {output_dir}")
+
+
 __all__ = ["app"]

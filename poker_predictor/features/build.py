@@ -10,7 +10,7 @@ import pandas as pd
 from ..data.schemas import PreflopSample
 from .actions import action_features
 from .cards import card_features
-from .equity import preflop_equity_vs_random
+from .equity import equity_vs_position_range, preflop_equity_vs_random
 from .position import position_features
 from .stacks import stack_features
 
@@ -20,6 +20,18 @@ def sample_features(sample: PreflopSample) -> dict[str, float]:
     feats: dict[str, float] = {}
     feats.update(card_features(sample.hero_hole))
     feats["equity_vs_random"] = preflop_equity_vs_random(sample.hero_hole)
+
+    # Position-aware equity: approximate equity vs the last aggressor's range.
+    aggressor_pos = None
+    for e in reversed(sample.action_sequence):
+        if e.action.value in ("raise", "allin"):
+            aggressor_pos = e.position.value
+            break
+    if aggressor_pos:
+        feats["equity_vs_range"] = equity_vs_position_range(sample.hero_hole, aggressor_pos)
+    else:
+        feats["equity_vs_range"] = preflop_equity_vs_random(sample.hero_hole)
+
     feats.update(position_features(sample.hero_pos, sample.num_players))
     feats.update(action_features(sample.action_sequence, sample.hero_pos))
     feats.update(

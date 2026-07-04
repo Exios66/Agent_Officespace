@@ -119,3 +119,36 @@ class PreflopSample(BaseModel):
     @property
     def is_open_pot(self) -> bool:
         return not any(e.action in (ActionType.RAISE, ActionType.ALLIN) for e in self.action_sequence)
+
+
+class Street(str, Enum):
+    """Betting streets."""
+    FLOP = "flop"
+    TURN = "turn"
+    RIVER = "river"
+
+
+class PostflopSample(BaseModel):
+    """Normalized postflop decision point."""
+
+    hero_pos: Position
+    hero_hole: str = Field(..., min_length=4, max_length=4)
+    hero_stack_bb: float = Field(default=100.0, ge=0.0)
+    num_players: int = Field(..., ge=1, le=9)
+    pot_bb: float = Field(..., ge=0.0)
+    street: Street
+    board: str = Field(..., description="Community cards, e.g. 'AhKs2d' (flop) or 'AhKs2dTc' (turn)")
+    action_sequence: list[ActionEvent] = Field(default_factory=list)
+    available_moves: list[str] = Field(default_factory=list)
+    correct_decision: str | None = None
+    raw: dict[str, Any] | None = Field(default=None, exclude=True, repr=False)
+
+    @property
+    def board_cards(self) -> list[str]:
+        """Parse board into list of 2-char cards."""
+        return [self.board[i:i+2] for i in range(0, len(self.board), 2)]
+
+    @property
+    def facing_bet_bb(self) -> float:
+        amts = [e.amount_bb for e in self.action_sequence if e.amount_bb is not None]
+        return max(amts) if amts else 0.0

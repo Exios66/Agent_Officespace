@@ -19,7 +19,7 @@ from typing import Any
 import pandas as pd
 
 from .parse_preflop import parse_prev_line
-from .schemas import PreflopSample, Position
+from .schemas import PreflopSample, PostflopSample, Position, Street
 
 
 POKERBENCH_REPO = "RZ412/PokerBench"
@@ -82,6 +82,13 @@ def load_preflop_csv(path: str | Path) -> list[PreflopSample]:
     return list(iter_preflop_csv(path))
 
 
+_LOCAL_DATA_SEARCH_DIRS = [
+    "poker/data/raw/pokerbench",
+    "data/raw/pokerbench",
+    "data/raw",
+]
+
+
 def load_pokerbench_preflop(
     split: str = "train",
     cache_dir: str | Path | None = None,
@@ -89,16 +96,25 @@ def load_pokerbench_preflop(
 ) -> list[PreflopSample]:
     """Download PokerBench preflop split via ``huggingface_hub`` and parse.
 
-    We use ``hf_hub_download`` (rather than ``datasets.load_dataset``) to avoid
-    building a full ``datasets`` schema — the CSV columns are simple enough
-    that ``pandas`` is sufficient and much lighter.
+    Falls back to local CSV files under common project paths if the Hub is
+    unreachable.
     """
-    from huggingface_hub import hf_hub_download  # local import: optional dep at runtime
-
     if split not in POKERBENCH_PREFLOP_FILES:
         raise ValueError(f"unknown split {split!r}; expected one of {list(POKERBENCH_PREFLOP_FILES)}")
 
     filename = POKERBENCH_PREFLOP_FILES[split]
+
+    # Try local paths first (avoids network when data is already present).
+    for search_dir in _LOCAL_DATA_SEARCH_DIRS:
+        candidate = Path(search_dir) / filename
+        if candidate.exists():
+            samples = load_preflop_csv(candidate)
+            if limit is not None:
+                samples = samples[:limit]
+            return samples
+
+    from huggingface_hub import hf_hub_download
+
     local_path = hf_hub_download(
         repo_id=POKERBENCH_REPO,
         filename=filename,
@@ -134,6 +150,68 @@ def load_pokerbench_preflop_json(
     with open(local_path) as f:
         data = json.load(f)
     return list(data)
+
+
+POKERBENCH_POSTFLOP_FILES = {
+    "train": "postflop_500k_train_set_game_scenario_information.csv",
+    "test": "postflop_5k_test_set_game_scenario_information.csv",
+}
+
+
+def load_pokerbench_postflop(
+    split: str = "train",
+    cache_dir: str | Path | None = None,
+    limit: int | None = None,
+) -> list[PostflopSample]:
+    """Load PokerBench postflop split. Falls back to local paths, then Hub."""
+    if split not in POKERBENCH_POSTFLOP_FILES:
+        raise ValueError(f"unknown split {split!r}")
+
+    filename = POKERBENCH_POSTFLOP_FILES[split]
+
+    for search_dir in _LOCAL_DATA_SEARCH_DIRS:
+        candidate = Path(search_dir) / filename
+        if candidate.exists():
+            return _load_postflop_csv(candidate, limit)
+
+    from huggingface_hub import hf_hub_download
+
+    local_path = hf_hub_download(
+        repo_id=POKERBENCH_REPO,
+        filename=filename,
+        repo_type="dataset",
+        cache_dir=str(cache_dir) if cache_dir else None,
+    )
+    return _load_postflop_csv(local_path, limit)
+
+
+def _load_postflop_csv(path: str | Path, limit: int | None = None) -> list[PostflopSample]:
+    df = pd.read_csv(path)
+    if limit:
+        df = df.head(limit)
+    samples = []
+    for _, row in df.iterrows():
+        r = row.to_dict()
+        try:
+            street_val = str(r.get("street", "flop")).strip().lower()
+            street = Street(street_val) if street_val in ("flop", "turn", "river") else Street.FLOP
+            sample = PostflopSample(
+                hero_pos=Position(str(r["hero_pos"]).strip()),
+                hero_hole=str(r["hero_holding"]).strip(),
+                hero_stack_bb=float(r.get("hero_stack_bb", 100.0) or 100.0),
+                num_players=int(r["num_players"]),
+                pot_bb=float(r["pot_size"]),
+                street=street,
+                board=str(r.get("board", "")).strip(),
+                action_sequence=parse_prev_line(str(r.get("prev_line", "") or "")),
+                available_moves=_coerce_available_moves(r.get("available_moves")),
+                correct_decision=str(r["correct_decision"]).strip() if r.get("correct_decision") else None,
+                raw=r,
+            )
+            samples.append(sample)
+        except Exception:
+            continue
+    return samples
 
 
 def samples_to_dataframe(samples: Iterable[PreflopSample]) -> pd.DataFrame:

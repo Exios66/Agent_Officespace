@@ -72,10 +72,11 @@ fi
 if [[ $REBUILD -eq 1 || ! -f "$DB_PATH" ]]; then
     echo "[spin_up] Building $DB_PATH from $RAW_DIR ..."
     mkdir -p "$(dirname "$DB_PATH")"
+    # ${arr[@]+...} avoids "unbound variable" under `set -u` when LIMIT_ARG is empty.
     python3 -m poker_predictor.data.prompt_db_cli build \
         --raw-dir "$RAW_DIR" \
         --db-path "$DB_PATH" \
-        "${LIMIT_ARG[@]}"
+        ${LIMIT_ARG[@]+"${LIMIT_ARG[@]}"}
 else
     echo "[spin_up] Reusing existing DB at $DB_PATH (pass --rebuild to force)."
 fi

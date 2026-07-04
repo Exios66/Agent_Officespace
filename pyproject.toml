@@ -39,6 +39,12 @@ reason = [
 tracking = [
     "trackio>=0.0.6",
 ]
+catboost = [
+    "catboost>=1.2",
+]
+tune = [
+    "optuna>=3.6",
+]
 dev = [
     "pytest>=8.3",
     "ruff>=0.6",

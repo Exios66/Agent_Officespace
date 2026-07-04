@@ -24,6 +24,11 @@ def action_features(events: list[ActionEvent], hero: Position) -> dict[str, floa
     is_4bet_pot = num_raises >= 3
     is_squeeze = num_raises >= 2 and num_callers >= 1
 
+    # Encode the action pattern as a hash of the action types sequence (first 6 actions).
+    _ACTION_MAP = {ActionType.FOLD: 1, ActionType.CALL: 2, ActionType.RAISE: 3, ActionType.ALLIN: 4, ActionType.CHECK: 5, ActionType.POST: 0}
+    pattern = tuple(_ACTION_MAP.get(e.action, 0) for e in events[:6])
+    action_pattern_hash = float(hash(pattern) % 1000)
+
     return {
         "num_events": float(len(events)),
         "num_raises": float(num_raises),
@@ -37,4 +42,5 @@ def action_features(events: list[ActionEvent], hero: Position) -> dict[str, floa
         "is_3bet_pot": float(is_3bet_pot),
         "is_4bet_pot": float(is_4bet_pot),
         "is_squeeze": float(is_squeeze),
+        "action_pattern_hash": action_pattern_hash,
     }

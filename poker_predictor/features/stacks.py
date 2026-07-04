@@ -17,6 +17,9 @@ def stack_features(
     pot_odds = call_amount / (call_amount + pot_bb) if (call_amount + pot_bb) > 0 else 0.0
     spr = hero_stack_bb / pot_bb if pot_bb > 0 else 0.0
 
+    pot_commitment = facing_bet_bb / (hero_stack_bb + pot_bb) if (hero_stack_bb + pot_bb) > 0 else 0.0
+    effective_stack = min(hero_stack_bb, pot_bb + facing_bet_bb)
+
     return {
         "hero_stack_bb": float(hero_stack_bb),
         "pot_bb": float(pot_bb),
@@ -25,4 +28,6 @@ def stack_features(
         "spr_proxy": float(spr),
         "allin_threshold": float(hero_stack_bb <= 25.0),
         "deep_stack": float(hero_stack_bb >= 100.0),
+        "pot_commitment": float(pot_commitment),
+        "effective_stack_bb": float(effective_stack),
     }

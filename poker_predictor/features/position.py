@@ -9,7 +9,10 @@ POSITION_INDEX = {p: i for i, p in enumerate(POSITIONS)}
 
 def position_features(hero: Position, num_players: int) -> dict[str, float]:
     idx = POSITION_INDEX[hero]
+    btn_idx = POSITION_INDEX[Position.BTN]
     seats_after = max(0, num_players - 1 - idx) if idx < num_players else 0
+    position_relative = (btn_idx - idx) % len(POSITIONS)
+
     return {
         "pos_idx": float(idx),
         "pos_is_blind": float(hero in (Position.SB, Position.BB)),
@@ -17,4 +20,5 @@ def position_features(hero: Position, num_players: int) -> dict[str, float]:
         "pos_is_early": float(hero in (Position.UTG, Position.HJ)),
         "seats_to_act_after": float(seats_after),
         "num_players": float(num_players),
+        "position_relative": float(position_relative),
     }

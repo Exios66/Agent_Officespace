@@ -87,7 +87,7 @@ def featurize(
 
 @app.command()
 def train(
-    model: str = typer.Option("lightgbm", help="'lightgbm' | 'logistic' | 'torch'"),
+    model: str = typer.Option("lightgbm", help="'lightgbm' | 'xgboost' | 'catboost' | 'logistic' | 'torch'"),
     limit: Optional[int] = typer.Option(None),
     output_dir: Path = typer.Option(Path("artifacts/classical")),
 ) -> None:
@@ -108,6 +108,54 @@ def train(
     from .training.train_classical import train as train_classical
 
     train_classical(output_dir=output_dir, model_kind=model, limit=limit)
+
+
+@app.command()
+def tune(
+    model: str = typer.Option("lightgbm", help="'lightgbm' | 'xgboost'"),
+    n_trials: int = typer.Option(100, help="Number of Optuna trials."),
+    cv: int = typer.Option(5, help="CV folds."),
+    limit: Optional[int] = typer.Option(None, help="Limit training rows for faster sweeps."),
+    output_dir: Path = typer.Option(Path("artifacts/tune")),
+) -> None:
+    """Run Optuna HPO on the action head (minimizes CV log-loss)."""
+    from .training.tune import tune as run_tune
+
+    result = run_tune(
+        model_kind=model, n_trials=n_trials, cv=cv, limit=limit, output_dir=output_dir
+    )
+    tbl = Table("field", "value")
+    tbl.add_row("model", result["model_kind"])
+    tbl.add_row("best_log_loss", f"{result['best_log_loss']:.5f}")
+    for k, v in result["best_params"].items():
+        tbl.add_row(k, f"{v}")
+    console.print(tbl)
+
+
+@app.command()
+def ensemble(
+    kinds: str = typer.Option("lightgbm,xgboost,catboost", help="Comma-separated base model kinds."),
+    limit: Optional[int] = typer.Option(None),
+    output_dir: Path = typer.Option(Path("artifacts/ensemble")),
+) -> None:
+    """Train a stacking ensemble over multiple base classifiers."""
+    from .data.loaders import load_pokerbench_preflop
+    from .features.build import build_feature_matrix, canonical_action_label
+    from .models.ensemble import train_stacked_ensemble
+    from .training.labels import villain_fold_label
+
+    samples = load_pokerbench_preflop(split="train", limit=limit)
+    X, raw_y = build_feature_matrix(samples)
+    y = [canonical_action_label(v) for v in raw_y]
+    mask = [v is not None for v in y]
+    X = X.loc[mask].reset_index(drop=True)
+    y_clean = [v for v in y if v is not None]
+    vy = [villain_fold_label(s) for s, m in zip(samples, mask, strict=False) if m]
+
+    kind_list = [k.strip() for k in kinds.split(",")]
+    ens = train_stacked_ensemble(X, y_clean, vy, kinds=kind_list, output_dir=output_dir)
+    console.print(f"[green]Ensemble trained![/green] Meta-acc: {ens.meta['meta_train_acc']:.4f}")
+    console.print(f"Saved to: {output_dir}/stacked_ensemble.joblib")
 
 
 @app.command()
@@ -141,6 +189,41 @@ def eval(
     console.print(tbl)
 
 
+@app.command(name="train-meta")
+def train_meta(
+    primary_path: Path = typer.Option(Path("artifacts/classical/multihead.joblib")),
+    limit: Optional[int] = typer.Option(None),
+    output_dir: Path = typer.Option(Path("artifacts/meta")),
+) -> None:
+    """Train a SuccessPredictor meta-model on a held-out slice."""
+    from .data.loaders import load_pokerbench_preflop
+    from .features.build import build_feature_matrix, canonical_action_label
+    from .models.baselines import MultiHeadModel
+    from .models.success_predictor import SuccessPredictor
+
+    model = MultiHeadModel.load(primary_path)
+    samples = load_pokerbench_preflop(split="train", limit=limit)
+    X, raw_y = build_feature_matrix(samples)
+    y = [canonical_action_label(v) for v in raw_y]
+    mask = [v is not None for v in y]
+    X = X.loc[mask].reset_index(drop=True)
+    y_clean = [v for v in y if v is not None]
+
+    # Use last 20% as held-out meta slice (primary was trained on first 90%).
+    n = len(X)
+    split_idx = int(n * 0.8)
+    X_meta, y_meta = X.iloc[split_idx:].reset_index(drop=True), y_clean[split_idx:]
+
+    sp = SuccessPredictor()
+    sp.fit(model.action_model, X_meta[model.feature_names], y_meta)
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+    import joblib
+    save_path = output_dir / "success_predictor.joblib"
+    joblib.dump(sp, save_path)
+    console.print(f"[green]Saved SuccessPredictor to {save_path}[/green]")
+
+
 @app.command()
 def predict(
     hero_pos: str = typer.Option(..., help="UTG/HJ/CO/BTN/SB/BB"),
@@ -152,6 +235,8 @@ def predict(
     available_moves: str = typer.Option("fold,call,raise"),
     model_path: Path = typer.Option(Path("artifacts/classical/multihead.joblib")),
     bet_size_bb: float = typer.Option(3.0, help="Hypothetical bluff size for EV calc."),
+    trust_gate: Optional[float] = typer.Option(None, "--trust-gate", help="Min meta-model confidence to output a prediction."),
+    meta_path: Optional[Path] = typer.Option(None, help="Path to SuccessPredictor joblib for trust gating."),
 ) -> None:
     """Score a single hand and print action probabilities + bluff EV."""
     from .data.parse_preflop import parse_prev_line
@@ -182,6 +267,15 @@ def predict(
         p_vf * pot_bb - (1.0 - p_vf) * bet_size_bb if vf is not None else float("nan")
     )
 
+    # Trust gate: check meta-model confidence if requested.
+    trust_conf = None
+    if trust_gate is not None:
+        import joblib as _jl
+        _meta_p = meta_path or Path("artifacts/meta/success_predictor.joblib")
+        if _meta_p.exists():
+            sp = _jl.load(_meta_p)
+            trust_conf = float(sp.predict_correct_proba(model.action_model, X[model.feature_names])[0])
+
     tbl = Table("field", "value")
     tbl.add_row("hero", f"{hero_pos} {hero_hole}")
     tbl.add_row("p_hero_fold", f"{p_fold:.3f}")
@@ -189,10 +283,36 @@ def predict(
         tbl.add_row(f"p({lbl})", f"{float(p):.3f}")
     tbl.add_row("p_villain_fold", f"{p_vf:.3f}" if vf is not None else "n/a")
     tbl.add_row("bluff_EV (bb)", f"{bluff_ev:.3f}" if vf is not None else "n/a")
+    if trust_conf is not None:
+        tbl.add_row("trust_confidence", f"{trust_conf:.3f}")
     console.print(tbl)
 
     top_idx = int(proba.argmax())
-    console.print(f"[bold cyan]Recommended action:[/bold cyan] {labels[top_idx]}")
+    if trust_gate is not None and trust_conf is not None and trust_conf < trust_gate:
+        console.print(f"[bold red]LOW CONFIDENCE ({trust_conf:.3f} < {trust_gate})[/bold red] — defer to solver/human")
+    else:
+        console.print(f"[bold cyan]Recommended action:[/bold cyan] {labels[top_idx]}")
+
+
+@app.command(name="llm-benchmark")
+def llm_benchmark(
+    model_path: str = typer.Option(..., help="Path or HF model ID for the fine-tuned LLM."),
+    backend: str = typer.Option("transformers", help="'transformers' or 'llama_cpp'"),
+    split: str = typer.Option("test"),
+    limit: Optional[int] = typer.Option(None),
+    output_dir: Path = typer.Option(Path("artifacts/llm_benchmark")),
+) -> None:
+    """Benchmark a fine-tuned LLM against the test split."""
+    from .llm.benchmark import benchmark_llm
+
+    metrics = benchmark_llm(
+        model_path=model_path, backend=backend, split=split,
+        limit=limit, output_dir=output_dir,
+    )
+    tbl = Table("metric", "value")
+    for k, v in metrics.items():
+        tbl.add_row(k, f"{v:.4f}" if isinstance(v, float) else str(v))
+    console.print(tbl)
 
 
 if __name__ == "__main__":

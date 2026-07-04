@@ -33,6 +33,20 @@ try:
 except ImportError:  # pragma: no cover - optional dep
     _HAS_LGBM = False
 
+try:
+    from xgboost import XGBClassifier
+
+    _HAS_XGB = True
+except ImportError:  # pragma: no cover - optional dep
+    _HAS_XGB = False
+
+try:
+    from catboost import CatBoostClassifier
+
+    _HAS_CATBOOST = True
+except ImportError:  # pragma: no cover - optional dep
+    _HAS_CATBOOST = False
+
 
 @dataclass
 class MultiHeadModel:
@@ -86,6 +100,42 @@ def _make_classifier(kind: str, n_classes: int):
             verbose=-1,
             n_jobs=-1,
         )
+    if kind == "xgboost":
+        if not _HAS_XGB:
+            raise RuntimeError(
+                "xgboost not installed. Install with: pip install xgboost"
+            )
+        return XGBClassifier(
+            objective="multi:softprob" if n_classes > 2 else "binary:logistic",
+            num_class=n_classes if n_classes > 2 else None,
+            n_estimators=400,
+            learning_rate=0.05,
+            max_depth=7,
+            subsample=0.9,
+            colsample_bytree=0.9,
+            reg_alpha=0.0,
+            reg_lambda=1.0,
+            use_label_encoder=False,
+            eval_metric="mlogloss" if n_classes > 2 else "logloss",
+            n_jobs=-1,
+            verbosity=0,
+        )
+    if kind == "catboost":
+        if not _HAS_CATBOOST:
+            raise RuntimeError(
+                "catboost not installed. Install with: pip install catboost"
+            )
+        return CatBoostClassifier(
+            iterations=400,
+            learning_rate=0.05,
+            depth=7,
+            bootstrap_type="MVS",
+            subsample=0.9,
+            l2_leaf_reg=3.0,
+            loss_function="MultiClass" if n_classes > 2 else "Logloss",
+            verbose=0,
+            thread_count=-1,
+        )
     if kind == "logistic":
         return LogisticRegression(max_iter=1000, multi_class="auto", n_jobs=-1)
     raise ValueError(f"unknown model kind: {kind!r}")
@@ -96,6 +146,7 @@ def train_action_head(
     y: list[str],
     kind: str = "lightgbm",
     calibrate: bool = True,
+    calibration_method: str = "sigmoid",
 ) -> tuple[Any, LabelEncoder]:
     """Fit the multiclass action head.
 
@@ -103,15 +154,16 @@ def train_action_head(
     ----------
     X: feature matrix.
     y: canonical action labels (``fold``, ``call``, ``raise``, ...).
-    kind: ``"lightgbm"`` or ``"logistic"``.
-    calibrate: wrap classifier in ``CalibratedClassifierCV`` for probability
-        calibration.
+    kind: ``"lightgbm"`` | ``"xgboost"`` | ``"catboost"`` | ``"logistic"``.
+    calibrate: wrap classifier in ``CalibratedClassifierCV``.
+    calibration_method: ``"sigmoid"`` (Platt scaling) or ``"isotonic"``.
+        Sigmoid is preferred for smaller calibration sets.
     """
     enc = LabelEncoder()
     y_enc = enc.fit_transform(y)
     base = _make_classifier(kind, n_classes=len(enc.classes_))
     if calibrate and len(X) >= 200:
-        model = CalibratedClassifierCV(base, method="isotonic", cv=3)
+        model = CalibratedClassifierCV(base, method=calibration_method, cv=3)
     else:
         model = base
     model.fit(X, y_enc)
@@ -123,6 +175,7 @@ def train_villain_fold_head(
     villain_folds: list[int],
     kind: str = "lightgbm",
     calibrate: bool = True,
+    calibration_method: str = "sigmoid",
 ) -> Any | None:
     """Fit the binary villain-fold head. Returns ``None`` if no positive samples.
 
@@ -137,7 +190,7 @@ def train_villain_fold_head(
     yf = np.asarray(villain_folds)[mask]
     base = _make_classifier(kind, n_classes=2)
     if calibrate and len(Xf) >= 200:
-        model = CalibratedClassifierCV(base, method="isotonic", cv=3)
+        model = CalibratedClassifierCV(base, method=calibration_method, cv=3)
     else:
         model = base
     model.fit(Xf, yf)

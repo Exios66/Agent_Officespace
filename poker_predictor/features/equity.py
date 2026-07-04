@@ -56,3 +56,25 @@ def _chen_to_equity(chen: float) -> float:
     x = (chen + 1.0) / 21.0
     x = max(0.0, min(1.0, x))
     return lo + x * (hi - lo)
+
+
+# Position-aware equity discount factors (approximate range tightening by position).
+_POS_RANGE_DISCOUNT = {
+    "UTG": 0.85,
+    "HJ": 0.88,
+    "CO": 0.92,
+    "BTN": 0.95,
+    "SB": 0.90,
+    "BB": 1.00,
+}
+
+
+def equity_vs_position_range(hole: str, villain_pos: str) -> float:
+    """Approximate equity vs a positional opening range.
+
+    Uses the vs-random equity discounted by how tight the villain's position is.
+    UTG ranges are tighter, so our equity vs that range is lower.
+    """
+    base = preflop_equity_vs_random(hole)
+    discount = _POS_RANGE_DISCOUNT.get(villain_pos, 0.92)
+    return base * discount
