@@ -1,6 +1,8 @@
 """Tests for preflop feature engineering."""
 from __future__ import annotations
 
+import pytest
+
 from poker_predictor.data.schemas import (
     ActionEvent,
     ActionType,
@@ -20,7 +22,7 @@ from poker_predictor.features.cards import (
     is_pair,
     is_suited,
 )
-from poker_predictor.features.equity import preflop_equity_vs_random
+from poker_predictor.features.equity import equity_vs_position_range, preflop_equity_vs_random
 
 
 def test_hand_class_counts_169():
@@ -104,6 +106,26 @@ def test_build_feature_matrix_dataframe():
     assert X.shape[0] == 2
     assert X.shape[1] > 10
     assert y == ["raise", "raise"]
+
+
+def test_equity_vs_position_range_discounts_by_villain_position():
+    aa = preflop_equity_vs_random("AhAs")
+    utg = equity_vs_position_range("AhAs", "UTG")
+    btn = equity_vs_position_range("AhAs", "BTN")
+    bb = equity_vs_position_range("AhAs", "BB")
+    assert utg < btn < bb
+    assert bb == pytest.approx(aa)
+    assert 0.0 < utg < 1.0
+
+
+def test_sample_features_includes_equity_vs_range_when_facing_raise():
+    actions = [
+        ActionEvent(position=Position.UTG, action=ActionType.RAISE, amount_bb=2.5),
+    ]
+    s = _mk_sample(actions=actions, pos=Position.BTN)
+    feats = sample_features(s)
+    assert "equity_vs_range" in feats
+    assert feats["equity_vs_range"] < feats["equity_vs_random"]
 
 
 def test_canonical_action_label():
